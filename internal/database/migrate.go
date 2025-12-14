@@ -2,14 +2,13 @@ package database
 
 import (
 	"context"
-	"os"
-	"path/filepath"
+	"githut/migrations"
+	"io/fs"
 	"sort"
 )
 
 type migrationFile struct {
 	Name string
-	Path string
 }
 
 func (d *DB) ensureSchemaMigrations(ctx context.Context) error {
@@ -18,21 +17,25 @@ func (d *DB) ensureSchemaMigrations(ctx context.Context) error {
 }
 
 func listMigrationFiles() ([]migrationFile, error) {
-	entries, err := os.ReadDir("migrations")
+	entries, err := migrations.SqlMigrations.ReadDir(".")
 	if err != nil {
 		return nil, err
 	}
 	var files []migrationFile
 	for _, e := range entries {
-		if !e.IsDir() && filepath.Ext(e.Name()) == ".sql" {
+		if !e.IsDir() && isSQL(e) {
 			files = append(files, migrationFile{
 				Name: e.Name(),
-				Path: filepath.Join("migrations", e.Name()),
 			})
 		}
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].Name < files[j].Name })
 	return files, nil
+}
+
+func isSQL(e fs.DirEntry) bool {
+	n := e.Name()
+	return len(n) > 4 && n[len(n)-4:] == ".sql"
 }
 
 func (d *DB) appliedVersions(ctx context.Context) (map[string]struct{}, error) {
@@ -71,7 +74,7 @@ func (d *DB) ApplyMigrations(ctx context.Context) error {
 		if _, ok := applied[f.Name]; ok {
 			continue
 		}
-		b, err := os.ReadFile(f.Path)
+		b, err := migrations.SqlMigrations.ReadFile(f.Name)
 		if err != nil {
 			return err
 		}

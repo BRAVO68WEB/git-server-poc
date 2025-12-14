@@ -1,0 +1,27 @@
+project_name: githut
+before:
+  hooks:
+    - go mod tidy
+builds:
+  - id: githut
+    main: ./cmd/githut
+    binary: githut
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+archives:
+  - format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{
+      - if eq .Arch \"amd64\" -}}x86_64{{- else -}}{{ .Arch }}{{- end -}}"
+checksum:
+  name_template: "checksums.txt"
+changelog:
+  use: git
+release:
+  draft: false
+  prerelease: auto

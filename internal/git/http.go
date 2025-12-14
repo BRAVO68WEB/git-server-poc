@@ -17,6 +17,8 @@ import (
 	"githut/internal/config"
 	"githut/internal/database"
 	"githut/internal/observability"
+
+	"github.com/gin-gonic/gin"
 )
 
 func RegisterHTTP(mux *http.ServeMux, cfg config.Config) {
@@ -43,6 +45,7 @@ func RegisterHTTP(mux *http.ServeMux, cfg config.Config) {
 			switch service {
 			case "git-upload-pack":
 				if cfg.PostgresDSN != "" && !allowUploadPack(r.Context(), cfg.PostgresDSN, owner, repo, r) {
+					w.Header().Set("WWW-Authenticate", "Basic realm=\"Git\"")
 					http.Error(w, "unauthorized", http.StatusUnauthorized)
 					return
 				}
@@ -60,6 +63,7 @@ func RegisterHTTP(mux *http.ServeMux, cfg config.Config) {
 					}
 				}
 				if actor == nil {
+					w.Header().Set("WWW-Authenticate", "Basic realm=\"Git\"")
 					http.Error(w, "Unauthorized", http.StatusUnauthorized)
 					return
 				}
@@ -82,6 +86,7 @@ func RegisterHTTP(mux *http.ServeMux, cfg config.Config) {
 				return
 			}
 			if cfg.PostgresDSN != "" && !allowUploadPack(r.Context(), cfg.PostgresDSN, owner, repo, r) {
+				w.Header().Set("WWW-Authenticate", "Basic realm=\"Git\"")
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
@@ -113,6 +118,7 @@ func RegisterHTTP(mux *http.ServeMux, cfg config.Config) {
 				}
 			}
 			if actor == nil {
+				w.Header().Set("WWW-Authenticate", "Basic realm=\"Git\"")
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
@@ -136,6 +142,114 @@ func RegisterHTTP(mux *http.ServeMux, cfg config.Config) {
 			logAudit(r.Context(), cfg.PostgresDSN, owner, repo, actorID, "http_receive_pack", r)
 			return
 		}
+	})
+}
+
+func RegisterHTTPGin(r *gin.Engine, cfg config.Config) {
+	r.GET("/git/:owner/:repo/info/refs", func(c *gin.Context) {
+		owner := c.Param("owner")
+		repo := c.Param("repo")
+		service := c.Query("service")
+		repoPath := ensureLocalRepo(owner, repo)
+		switch service {
+		case "git-upload-pack":
+			if cfg.PostgresDSN != "" && !allowUploadPack(c.Request.Context(), cfg.PostgresDSN, owner, repo, c.Request) {
+				c.Header("WWW-Authenticate", "Basic realm=\"Git\"")
+				c.String(http.StatusUnauthorized, "unauthorized")
+				return
+			}
+			c.Header("Content-Type", "application/x-git-upload-pack-advertisement")
+			c.Header("Cache-Control", "no-cache")
+			c.Writer.WriteHeader(http.StatusOK)
+			_ = runGitAdvertise(c.Writer, c.Request, "git-upload-pack", repoPath)
+			return
+		case "git-receive-pack":
+			var actor *database.UserRow
+			if cfg.PostgresDSN != "" {
+				if u := validateBearerDB(c.Request.Context(), dbConnectNoErr(c.Request.Context(), cfg.PostgresDSN), c.Request); u != nil && !u.Disabled {
+					actor = u
+				} else if u2 := validateBasicDB(c.Request.Context(), dbConnectNoErr(c.Request.Context(), cfg.PostgresDSN), c.Request); u2 != nil && !u2.Disabled {
+					actor = u2
+				}
+			}
+			if actor == nil {
+				c.Header("WWW-Authenticate", "Basic realm=\"Git\"")
+				c.String(http.StatusUnauthorized, "unauthorized")
+				return
+			}
+			ok, err := dbConnectNoErr(c.Request.Context(), cfg.PostgresDSN).HasPushAccess(c.Request.Context(), actor.Username, owner, repo)
+			if err != nil || !ok {
+				c.String(http.StatusForbidden, "forbidden")
+				return
+			}
+			c.Header("Content-Type", "application/x-git-receive-pack-advertisement")
+			c.Header("Cache-Control", "no-cache")
+			c.Writer.WriteHeader(http.StatusOK)
+			_ = runGitAdvertise(c.Writer, c.Request, "git-receive-pack", repoPath)
+			return
+		default:
+			c.String(http.StatusBadRequest, "bad service")
+			return
+		}
+	})
+	r.POST("/git/:owner/:repo/git-upload-pack", func(c *gin.Context) {
+		owner := c.Param("owner")
+		repo := c.Param("repo")
+		if cfg.PostgresDSN != "" && !allowUploadPack(c.Request.Context(), cfg.PostgresDSN, owner, repo, c.Request) {
+			c.Header("WWW-Authenticate", "Basic realm=\"Git\"")
+			c.String(http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		c.Header("Content-Type", "application/x-git-upload-pack-result")
+		c.Writer.WriteHeader(http.StatusOK)
+		start := time.Now()
+		err := runGitService(c.Writer, c.Request, "git-upload-pack", ensureLocalRepo(owner, repo))
+		observability.RecordUploadPack(time.Since(start), err != nil)
+		var actorID *int64
+		if cfg.PostgresDSN != "" {
+			if u := validateBearerDB(c.Request.Context(), dbConnectNoErr(c.Request.Context(), cfg.PostgresDSN), c.Request); u != nil {
+				actorID = &u.ID
+			} else if u2 := validateBasicDB(c.Request.Context(), dbConnectNoErr(c.Request.Context(), cfg.PostgresDSN), c.Request); u2 != nil {
+				actorID = &u2.ID
+			}
+		}
+		logAudit(c.Request.Context(), cfg.PostgresDSN, owner, repo, actorID, "http_upload_pack", c.Request)
+	})
+	r.POST("/git/:owner/:repo/git-receive-pack", func(c *gin.Context) {
+		owner := c.Param("owner")
+		repo := c.Param("repo")
+		var actor *database.UserRow
+		if cfg.PostgresDSN != "" {
+			if u := validateBearerDB(c.Request.Context(), dbConnectNoErr(c.Request.Context(), cfg.PostgresDSN), c.Request); u != nil && !u.Disabled {
+				actor = u
+			} else if u2 := validateBasicDB(c.Request.Context(), dbConnectNoErr(c.Request.Context(), cfg.PostgresDSN), c.Request); u2 != nil && !u2.Disabled {
+				actor = u2
+			}
+		}
+		if actor == nil {
+			c.Header("WWW-Authenticate", "Basic realm=\"Git\"")
+			c.String(http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		ok, err := dbConnectNoErr(c.Request.Context(), cfg.PostgresDSN).HasPushAccess(c.Request.Context(), actor.Username, owner, repo)
+		if err != nil || !ok {
+			c.String(http.StatusForbidden, "forbidden")
+			return
+		}
+		c.Header("Content-Type", "application/x-git-receive-pack-result")
+		c.Writer.WriteHeader(http.StatusOK)
+		start := time.Now()
+		err = runGitService(c.Writer, c.Request, "git-receive-pack", ensureLocalRepo(owner, repo))
+		observability.RecordReceivePack(time.Since(start), err != nil)
+		var actorID *int64
+		if cfg.PostgresDSN != "" {
+			if u := validateBearerDB(c.Request.Context(), dbConnectNoErr(c.Request.Context(), cfg.PostgresDSN), c.Request); u != nil {
+				actorID = &u.ID
+			} else if u2 := validateBasicDB(c.Request.Context(), dbConnectNoErr(c.Request.Context(), cfg.PostgresDSN), c.Request); u2 != nil {
+				actorID = &u2.ID
+			}
+		}
+		logAudit(c.Request.Context(), cfg.PostgresDSN, owner, repo, actorID, "http_receive_pack", c.Request)
 	})
 }
 
@@ -199,11 +313,13 @@ func validateBasicDB(ctx context.Context, db *database.DB, r *http.Request) *dat
 	if len(parts) != 2 {
 		return nil
 	}
-	u, err := db.ValidateUserPassword(ctx, parts[0], parts[1])
-	if err != nil {
-		return nil
+	if u, err := db.ValidateUserPassword(ctx, parts[0], parts[1]); err == nil && u != nil {
+		return u
 	}
-	return u
+	if u2, err := db.ValidateToken(ctx, parts[1]); err == nil && u2 != nil {
+		return u2
+	}
+	return nil
 }
 
 func decodeBasic(b64 string) (string, error) {
@@ -215,8 +331,6 @@ func decodeBasic(b64 string) (string, error) {
 }
 
 func base64StdDecode(s string) ([]byte, error) {
-	// avoid adding new imports; use existing strings and encoding in stdlib via exec? Not possible.
-	// We will import encoding/base64 at top.
 	return base64.StdEncoding.DecodeString(s)
 }
 

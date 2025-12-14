@@ -1,0 +1,18 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o tmp/githut ./cmd/githut"
+bin = "tmp/githut"
+full_bin = "TMP_DIR=tmp ./tmp/githut serve"
+delay = 1000
+stop_on_error = true
+
+[log]
+time = true
+
+[watch]
+include_dir = ["cmd", "internal", "migrations"]
+exclude_dir = ["tmp", "dist", ".git"]
+include_ext = ["go", "sql"]
+exclude_file = []

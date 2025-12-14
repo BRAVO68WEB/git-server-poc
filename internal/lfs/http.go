@@ -10,6 +10,7 @@ import (
 	"githut/internal/config"
 	"githut/internal/database"
 	"githut/internal/storage"
+	"github.com/gin-gonic/gin"
 )
 
 type batchReq struct {
@@ -69,6 +70,19 @@ func RegisterHTTP(mux *http.ServeMux, cfg config.Config) {
 	})
 }
 
+func RegisterHTTPGin(r *gin.Engine, cfg config.Config) {
+	store := storage.FromConfig(cfg)
+	r.POST("/lfs/:owner/:repo/objects/batch", func(c *gin.Context) {
+		handleBatch(c.Writer, c.Request, cfg, store, c.Param("owner"), c.Param("repo"))
+	})
+	r.GET("/lfs/:owner/:repo/objects/:oid", func(c *gin.Context) {
+		handleGetObject(c.Writer, c.Request, cfg, store, c.Param("owner"), c.Param("repo"), c.Param("oid"))
+	})
+	r.PUT("/lfs/:owner/:repo/objects/:oid", func(c *gin.Context) {
+		handlePutObject(c.Writer, c.Request, cfg, store, c.Param("owner"), c.Param("repo"), c.Param("oid"))
+	})
+}
+
 func handleBatch(w http.ResponseWriter, r *http.Request, cfg config.Config, store storage.Storage, owner, repo string) {
 	var req batchReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -113,6 +127,7 @@ func handleBatch(w http.ResponseWriter, r *http.Request, cfg config.Config, stor
 func handleGetObject(w http.ResponseWriter, r *http.Request, cfg config.Config, store storage.Storage, owner, repo, oid string) {
 	// authorize: public/internal OK, private requires pull
 	if cfg.PostgresDSN != "" && !hasPull(r, cfg, owner, repo) {
+		w.Header().Set("WWW-Authenticate", "Basic realm=\"Git\"")
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -129,6 +144,7 @@ func handleGetObject(w http.ResponseWriter, r *http.Request, cfg config.Config, 
 func handlePutObject(w http.ResponseWriter, r *http.Request, cfg config.Config, store storage.Storage, owner, repo, oid string) {
 	// require push
 	if cfg.PostgresDSN != "" && !hasPush(r, cfg, owner, repo) {
+		w.Header().Set("WWW-Authenticate", "Basic realm=\"Git\"")
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}

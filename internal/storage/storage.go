@@ -14,5 +14,8 @@ type Storage interface {
 }
 
 func FromConfig(cfg config.Config) Storage {
+	if cfg.S3Bucket != "" && cfg.S3Region != "" && cfg.AWSAccessKeyID != "" && cfg.AWSSecretAccessKey != "" {
+		return NewS3Storage(cfg.S3Region, cfg.S3Bucket, cfg.S3Endpoint, cfg.AWSAccessKeyID, cfg.AWSSecretAccessKey, cfg.AWSSessionToken)
+	}
 	return NewLocalStorage("data/lfs")
 }
