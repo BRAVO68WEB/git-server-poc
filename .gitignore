@@ -36,3 +36,5 @@ tmp/
 dist/
 .air/
 githut.yaml
+
+!cmd/githut
