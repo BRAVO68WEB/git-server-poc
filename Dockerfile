@@ -9,13 +9,12 @@ RUN --mount=type=cache,target=/root/.cache/go-build sh -c '\
   set -eux; \
   CMD="${CMD_PATH:-}"; \
   if [ -z "$CMD" ]; then \
-    mains="$(go list -f '\''{{if eq .Name "main"}}{{.Dir}}{{end}}'\'' ./... | grep . || true)"; \
+    mains="$(go list -f '\''{{if eq .Name "main"}}{{.ImportPath}}{{end}}'\'' ./... | grep . || true)"; \
     count="$(printf "%s\n" "$mains" | sed "/^$/d" | wc -l)"; \
     if [ "$count" -eq 0 ]; then echo "ERROR: No main packages found in module"; exit 1; fi; \
     if [ "$count" -gt 1 ]; then echo "ERROR: Multiple main packages found:"; printf "%s\n" "$mains"; exit 1; fi; \
     CMD="$mains"; \
   fi; \
-  test -e "$CMD" || (echo "ERROR: CMD_PATH '\''$CMD'\'' not found" && exit 1); \
   CGO_ENABLED=0 go build -o /out/githut "$CMD" \
 '
 
