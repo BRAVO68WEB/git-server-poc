@@ -9,7 +9,7 @@ import (
 
 	"github.com/bravo68web/githut/internal/domain/models"
 	"github.com/bravo68web/githut/internal/domain/repository"
-	apperror "github.com/bravo68web/githut/pkg/error"
+	apperror "github.com/bravo68web/githut/pkg/errors"
 )
 
 // RepoRepoImpl implements the RepoRepository interface using GORM
