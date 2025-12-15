@@ -1,0 +1,63 @@
+package router
+
+import (
+	"github.com/bravo68web/githut/internal/application/service"
+	"github.com/bravo68web/githut/internal/infrastructure/git"
+	"github.com/bravo68web/githut/internal/infrastructure/repository"
+	"github.com/bravo68web/githut/internal/transport/http/handler"
+	"github.com/bravo68web/githut/internal/transport/http/middleware"
+)
+
+func (r *Router) repoRouter() {
+	v1 := r.server.Group("/api/v1")
+
+	// Initialize repository
+	rr := repository.NewRepoRepository(r.server.DB.DB())
+	ur := repository.NewUserRepository(r.server.DB.DB())
+
+	// Initialize repo service
+	authService := service.NewAuthService(ur)
+	gitService := git.NewGitOperations(r.server.StorageService)
+	repoService := service.NewRepoService(rr, ur, gitService, r.server.StorageService)
+
+	// Initialize auth middleware
+	authMiddleware := middleware.NewAuthMiddleware(authService)
+
+	// Initialize handler
+	h := handler.NewRepoHandler(
+		repoService,
+		r.server.Config.Server.Host,
+		r.server.Config.SSH.Host,
+		r.server.Config.SSH.Port,
+	)
+
+	// Repository routes
+	repos := v1.Group("/repos")
+	{
+		// List public repositories (no auth required)
+		repos.GET("/public", h.ListPublicRepositories)
+
+		// Protected repository routes
+		repos.POST("", authMiddleware.RequireAuth(), h.CreateRepository)
+		repos.GET("", authMiddleware.RequireAuth(), h.ListRepositories)
+
+		// Repository-specific routes
+		repoRoutes := repos.Group("/:owner/:repo")
+		{
+			repoRoutes.GET("", authMiddleware.Authenticate(), h.GetRepository)
+			repoRoutes.PATCH("", authMiddleware.RequireAuth(), h.UpdateRepository)
+			repoRoutes.DELETE("", authMiddleware.RequireAuth(), h.DeleteRepository)
+			repoRoutes.GET("/stats", authMiddleware.Authenticate(), h.GetRepositoryStats)
+
+			// Branch routes
+			repoRoutes.GET("/branches", authMiddleware.Authenticate(), h.ListBranches)
+			repoRoutes.POST("/branches", authMiddleware.RequireAuth(), h.CreateBranch)
+			repoRoutes.DELETE("/branches/:branch", authMiddleware.RequireAuth(), h.DeleteBranch)
+
+			// Tag routes
+			repoRoutes.GET("/tags", authMiddleware.Authenticate(), h.ListTags)
+			repoRoutes.POST("/tags", authMiddleware.RequireAuth(), h.CreateTag)
+			repoRoutes.DELETE("/tags/:tag", authMiddleware.RequireAuth(), h.DeleteTag)
+		}
+	}
+}
