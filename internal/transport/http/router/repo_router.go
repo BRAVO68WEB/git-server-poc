@@ -1,9 +1,6 @@
 package router
 
 import (
-	"github.com/bravo68web/githut/internal/application/service"
-	"github.com/bravo68web/githut/internal/infrastructure/git"
-	"github.com/bravo68web/githut/internal/infrastructure/repository"
 	"github.com/bravo68web/githut/internal/transport/http/handler"
 	"github.com/bravo68web/githut/internal/transport/http/middleware"
 )
@@ -11,21 +8,12 @@ import (
 func (r *Router) repoRouter() {
 	v1 := r.server.Group("/api/v1")
 
-	// Initialize repository
-	rr := repository.NewRepoRepository(r.server.DB.DB())
-	ur := repository.NewUserRepository(r.server.DB.DB())
-
-	// Initialize repo service
-	authService := service.NewAuthService(ur)
-	gitService := git.NewGitOperations(r.server.StorageService)
-	repoService := service.NewRepoService(rr, ur, gitService, r.server.StorageService)
-
 	// Initialize auth middleware
-	authMiddleware := middleware.NewAuthMiddleware(authService)
+	authMiddleware := middleware.NewAuthMiddleware(r.Deps.AuthService)
 
 	// Initialize handler
 	h := handler.NewRepoHandler(
-		repoService,
+		r.Deps.RepoService,
 		r.server.Config.Server.Host,
 		r.server.Config.SSH.Host,
 		r.server.Config.SSH.Port,
