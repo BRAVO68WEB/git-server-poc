@@ -1,0 +1,10 @@
+tasks = ["caddy-dev", "server", "web"]
+
+[task.caddy-dev]
+cmd = "make caddy-dev"
+
+[task.server]
+cmd = "make server"
+
+[task.web]
+cmd = "make web"

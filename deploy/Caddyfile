@@ -1,0 +1,48 @@
+{
+}
+
+dev.localhost {
+	log {
+		output stderr
+		format console
+		level DEBUG
+	}
+
+	@gitrefs {
+		path_regexp gitrefs ^/(?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?/info/refs$
+	}
+	handle @gitrefs {
+		rewrite * /git/{http.regexp.gitrefs.owner}/{http.regexp.gitrefs.repo}/info/refs
+		reverse_proxy {$GITHUT_ADDR}
+	}
+
+	@upload {
+		method POST
+		path_regexp upload ^/(?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?/git-upload-pack$
+	}
+	handle @upload {
+		rewrite * /git/{http.regexp.upload.owner}/{http.regexp.upload.repo}/git-upload-pack
+		reverse_proxy {$GITHUT_ADDR}
+	}
+
+	@receive {
+		method POST
+		path_regexp receive ^/(?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?/git-receive-pack$
+	}
+	handle @receive {
+		rewrite * /git/{http.regexp.receive.owner}/{http.regexp.receive.repo}/git-receive-pack
+		reverse_proxy {$GITHUT_ADDR}
+	}
+
+	@api {
+		path_regexp api ^/api/.*$
+	}
+
+	handle @api {
+		reverse_proxy {$GITHUT_ADDR}
+	}
+
+	handle {
+		reverse_proxy {$FRONTEND_ADDR}
+	}
+}

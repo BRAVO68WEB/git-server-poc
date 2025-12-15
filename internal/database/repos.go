@@ -66,3 +66,34 @@ func (d *DB) ListReposByOwner(ctx context.Context, ownerUsername string) ([]Repo
 	}
 	return out, rows.Err()
 }
+
+type RepoWithUserRow struct {
+	OwnerName   string
+	Name        string
+	Description string
+	Visibility  string
+}
+
+func (d *DB) ListAllRepos(ctx context.Context) ([]RepoWithUserRow, error) {
+	rows, err := d.Conn.Query(ctx, `SELECT u.username, r.name, r.description, r.visibility 
+FROM repos r 
+JOIN users u ON r.owner_id = u.id 
+ORDER BY u.username, r.name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []RepoWithUserRow
+	for rows.Next() {
+		var r RepoWithUserRow
+		var desc *string
+		if err := rows.Scan(&r.OwnerName, &r.Name, &desc, &r.Visibility); err != nil {
+			return nil, err
+		}
+		if desc != nil {
+			r.Description = *desc
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}

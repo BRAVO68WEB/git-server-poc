@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"strings"
+
 	"gopkg.in/yaml.v3"
 )
 
@@ -45,14 +46,41 @@ func LoadFromFile(path string) (Config, error) {
 func Load() Config {
 	if cfgPathOverride != "" {
 		if c, err := LoadFromFile(cfgPathOverride); err == nil {
+			if c.PostgresDSN == "" {
+				c.PostgresDSN = os.Getenv("GITHUT_POSTGRES_DSN")
+			}
+			if c.S3Region == "" {
+				c.S3Region = os.Getenv("GITHUT_S3_REGION")
+			}
+			if c.S3Bucket == "" {
+				c.S3Bucket = os.Getenv("GITHUT_S3_BUCKET")
+			}
+			if c.S3Endpoint == "" {
+				c.S3Endpoint = os.Getenv("GITHUT_S3_ENDPOINT")
+			}
+			if c.AWSAccessKeyID == "" {
+				c.AWSAccessKeyID = os.Getenv("AWS_ACCESS_KEY_ID")
+			}
+			if c.AWSSecretAccessKey == "" {
+				c.AWSSecretAccessKey = os.Getenv("AWS_SECRET_ACCESS_KEY")
+			}
+			if c.AWSSessionToken == "" {
+				c.AWSSessionToken = os.Getenv("AWS_SESSION_TOKEN")
+			}
+			if c.HTTPAddr == "" {
+				c.HTTPAddr = os.Getenv("GITHUT_HTTP_ADDR")
+			}
+			if c.SSHAddr == "" {
+				c.SSHAddr = os.Getenv("GITHUT_SSH_ADDR")
+			}
 			return c
 		}
 	}
 	return Config{
-		PostgresDSN: os.Getenv("GITHUT_POSTGRES_DSN"),
-		S3Region:    os.Getenv("GITHUT_S3_REGION"),
-		S3Bucket:    os.Getenv("GITHUT_S3_BUCKET"),
-		S3Endpoint:  os.Getenv("GITHUT_S3_ENDPOINT"),
+		PostgresDSN:        os.Getenv("GITHUT_POSTGRES_DSN"),
+		S3Region:           os.Getenv("GITHUT_S3_REGION"),
+		S3Bucket:           os.Getenv("GITHUT_S3_BUCKET"),
+		S3Endpoint:         os.Getenv("GITHUT_S3_ENDPOINT"),
 		AWSAccessKeyID:     os.Getenv("AWS_ACCESS_KEY_ID"),
 		AWSSecretAccessKey: os.Getenv("AWS_SECRET_ACCESS_KEY"),
 		AWSSessionToken:    os.Getenv("AWS_SESSION_TOKEN"),

@@ -52,13 +52,14 @@ func serveCmd() *cobra.Command {
 		Use:   "serve",
 		Short: "Run HTTP and optional SSH servers",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if os.Getenv("GITHUT_POSTGRES_DSN") == "" || os.Getenv("GITHUT_HTTP_ADDR") == "" {
-				return fmt.Errorf("missing required environment variables: GITHUT_POSTGRES_DSN and GITHUT_HTTP_ADDR")
-			}
 			mux := http.NewServeMux()
 			cfg := config.Load()
+			if cfg.PostgresDSN == "" || cfg.HTTPAddr == "" {
+				return fmt.Errorf("missing required configuration: postgres_dsn or http_addr")
+			}
 			addr := cfg.HTTPAddr
 			git.RegisterHTTP(mux, cfg)
+			git.RegisterAPI(mux, cfg)
 			observability.RegisterMetrics(mux)
 			lfs.RegisterHTTP(mux, cfg)
 			mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -98,6 +99,39 @@ func usersCmd() *cobra.Command {
 		Use:   "users",
 		Short: "Manage users",
 	}
+	create := &cobra.Command{
+		Use:   "create",
+		Short: "Create user",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg := config.Load()
+			if cfg.PostgresDSN == "" {
+				return fmt.Errorf("database not configured")
+			}
+			username, _ := cmd.Flags().GetString("username")
+			email, _ := cmd.Flags().GetString("email")
+			role, _ := cmd.Flags().GetString("role")
+			password, _ := cmd.Flags().GetString("password")
+			if username == "" || email == "" || role == "" || password == "" {
+				return fmt.Errorf("username, email, role, and password are required")
+			}
+			ctx := context.Background()
+			db, err := database.Connect(ctx, cfg.PostgresDSN)
+			if err != nil {
+				return err
+			}
+			defer db.Close(ctx)
+			if err := db.CreateUser(ctx, username, email, role, password); err != nil {
+				return err
+			}
+			fmt.Println("created")
+			return nil
+		},
+	}
+	create.Flags().String("username", "", "username")
+	create.Flags().String("email", "", "email")
+	create.Flags().String("role", "developer", "role")
+	create.Flags().String("password", "", "password")
+	cmd.AddCommand(create)
 	cmd.AddCommand(sshKeyCmd())
 	token := &cobra.Command{
 		Use:   "token",
@@ -343,6 +377,44 @@ func reposCmd() *cobra.Command {
 	create.Flags().String("name", "", "repository name")
 	create.Flags().String("visibility", "", "visibility")
 	cmd.AddCommand(create)
+	members := &cobra.Command{
+		Use:   "members",
+		Short: "Manage repository members",
+	}
+	add := &cobra.Command{
+		Use:   "add",
+		Short: "Add member",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg := config.Load()
+			if cfg.PostgresDSN == "" {
+				return fmt.Errorf("database not configured")
+			}
+			owner, _ := cmd.Flags().GetString("owner")
+			name, _ := cmd.Flags().GetString("name")
+			username, _ := cmd.Flags().GetString("username")
+			role, _ := cmd.Flags().GetString("role")
+			if owner == "" || name == "" || username == "" || role == "" {
+				return fmt.Errorf("owner, name, username, and role are required")
+			}
+			ctx := context.Background()
+			db, err := database.Connect(ctx, cfg.PostgresDSN)
+			if err != nil {
+				return err
+			}
+			defer db.Close(ctx)
+			if err := db.AddMember(ctx, owner, name, username, role); err != nil {
+				return err
+			}
+			fmt.Println("added")
+			return nil
+		},
+	}
+	add.Flags().String("owner", "", "owner username")
+	add.Flags().String("name", "", "repository name")
+	add.Flags().String("username", "", "member username")
+	add.Flags().String("role", "", "role")
+	members.AddCommand(add)
+	cmd.AddCommand(members)
 	return cmd
 }
 

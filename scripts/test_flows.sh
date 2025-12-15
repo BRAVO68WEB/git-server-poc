@@ -29,7 +29,7 @@ start_server() {
   log "Starting server..."
   GITHUT_HTTP_ADDR="${GITHUT_HTTP_ADDR:-:8080}" \
   GITHUT_POSTGRES_DSN="${GITHUT_POSTGRES_DSN}" \
-  nohup bash -c 'go run ./cmd/serve' >/tmp/githut-serve.log 2>&1 &
+  nohup bash -c 'go run ./cmd/githut serve' >/tmp/githut-serve.log 2>&1 &
   SERVE_PID=$!
   log "Server PID: ${SERVE_PID}"
   for i in {1..50}; do
@@ -53,20 +53,20 @@ main() {
   require_env
 
   log "Running migrations"
-  go run ./cmd/manage db migrate up
+  go run ./cmd/githut db migrate up
 
   log "Creating users"
-  go run ./cmd/manage users create --username alice --email alice@example.com --role developer --password 'secret123'
-  go run ./cmd/manage users create --username bob --email bob@example.com --role developer --password 'hunter2'
+  go run ./cmd/githut users create --username alice --email alice@example.com --role developer --password 'secret123'
+  go run ./cmd/githut users create --username bob --email bob@example.com --role developer --password 'hunter2'
 
   log "Creating repositories"
-  go run ./cmd/manage repos create --owner alice --name demo --visibility public
-  go run ./cmd/manage repos create --owner alice --name private-repo --visibility private
+  go run ./cmd/githut repos create --owner alice --name demo --visibility public
+  go run ./cmd/githut repos create --owner alice --name private-repo --visibility private
   log "Adding member bob to private-repo"
-  go run ./cmd/manage repos members add --owner alice --name private-repo --username bob --role developer
+  go run ./cmd/githut repos members add --owner alice --name private-repo --username bob --role developer
 
   log "Issuing token for alice"
-  ALICE_TOKEN="$(go run ./cmd/manage users token create --username alice --name testcli | tail -n 1)"
+  ALICE_TOKEN="$(go run ./cmd/githut users token create --username alice --name testcli | tail -n 1)"
   if [[ -z "${ALICE_TOKEN}" ]]; then
     log "ERROR: Failed to create token for alice"
     exit 1
