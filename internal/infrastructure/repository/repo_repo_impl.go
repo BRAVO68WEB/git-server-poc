@@ -10,6 +10,7 @@ import (
 	"github.com/bravo68web/githut/internal/domain/models"
 	"github.com/bravo68web/githut/internal/domain/repository"
 	apperror "github.com/bravo68web/githut/pkg/errors"
+	"github.com/google/uuid"
 )
 
 // RepoRepoImpl implements the RepoRepository interface using GORM
@@ -34,7 +35,7 @@ func (r *RepoRepoImpl) Create(ctx context.Context, repo *models.Repository) erro
 }
 
 // FindByID retrieves a repository by its ID
-func (r *RepoRepoImpl) FindByID(ctx context.Context, id uint) (*models.Repository, error) {
+func (r *RepoRepoImpl) FindByID(ctx context.Context, id uuid.UUID) (*models.Repository, error) {
 	var repo models.Repository
 	err := r.db.WithContext(ctx).Preload("Owner").First(&repo, id).Error
 	if err != nil {
@@ -47,7 +48,7 @@ func (r *RepoRepoImpl) FindByID(ctx context.Context, id uint) (*models.Repositor
 }
 
 // FindByOwnerAndName finds a repository by owner ID and name
-func (r *RepoRepoImpl) FindByOwnerAndName(ctx context.Context, ownerID uint, name string) (*models.Repository, error) {
+func (r *RepoRepoImpl) FindByOwnerAndName(ctx context.Context, ownerID uuid.UUID, name string) (*models.Repository, error) {
 	var repo models.Repository
 	err := r.db.WithContext(ctx).
 		Preload("Owner").
@@ -80,7 +81,7 @@ func (r *RepoRepoImpl) FindByOwnerUsernameAndName(ctx context.Context, username,
 }
 
 // FindByOwner finds all repositories owned by a user
-func (r *RepoRepoImpl) FindByOwner(ctx context.Context, ownerID uint) ([]*models.Repository, error) {
+func (r *RepoRepoImpl) FindByOwner(ctx context.Context, ownerID uuid.UUID) ([]*models.Repository, error) {
 	var repos []*models.Repository
 	err := r.db.WithContext(ctx).
 		Preload("Owner").
@@ -140,7 +141,7 @@ func (r *RepoRepoImpl) Update(ctx context.Context, repo *models.Repository) erro
 }
 
 // Delete deletes a repository by ID
-func (r *RepoRepoImpl) Delete(ctx context.Context, id uint) error {
+func (r *RepoRepoImpl) Delete(ctx context.Context, id uuid.UUID) error {
 	result := r.db.WithContext(ctx).Delete(&models.Repository{}, id)
 	if result.Error != nil {
 		return apperror.DatabaseError("delete", result.Error)
@@ -152,7 +153,7 @@ func (r *RepoRepoImpl) Delete(ctx context.Context, id uint) error {
 }
 
 // ExistsByOwnerAndName checks if a repository exists with the given owner and name
-func (r *RepoRepoImpl) ExistsByOwnerAndName(ctx context.Context, ownerID uint, name string) (bool, error) {
+func (r *RepoRepoImpl) ExistsByOwnerAndName(ctx context.Context, ownerID uuid.UUID, name string) (bool, error) {
 	var count int64
 	err := r.db.WithContext(ctx).
 		Model(&models.Repository{}).
@@ -165,7 +166,7 @@ func (r *RepoRepoImpl) ExistsByOwnerAndName(ctx context.Context, ownerID uint, n
 }
 
 // CountByOwner returns the count of repositories owned by a user
-func (r *RepoRepoImpl) CountByOwner(ctx context.Context, ownerID uint) (int64, error) {
+func (r *RepoRepoImpl) CountByOwner(ctx context.Context, ownerID uuid.UUID) (int64, error) {
 	var count int64
 	err := r.db.WithContext(ctx).
 		Model(&models.Repository{}).
@@ -217,7 +218,7 @@ func (r *RepoRepoImpl) Search(ctx context.Context, query string, limit, offset i
 }
 
 // UpdateVisibility updates the visibility of a repository
-func (r *RepoRepoImpl) UpdateVisibility(ctx context.Context, id uint, isPrivate bool) error {
+func (r *RepoRepoImpl) UpdateVisibility(ctx context.Context, id uuid.UUID, isPrivate bool) error {
 	result := r.db.WithContext(ctx).
 		Model(&models.Repository{}).
 		Where("id = ?", id).
@@ -232,7 +233,7 @@ func (r *RepoRepoImpl) UpdateVisibility(ctx context.Context, id uint, isPrivate 
 }
 
 // UpdateDescription updates the description of a repository
-func (r *RepoRepoImpl) UpdateDescription(ctx context.Context, id uint, description string) error {
+func (r *RepoRepoImpl) UpdateDescription(ctx context.Context, id uuid.UUID, description string) error {
 	result := r.db.WithContext(ctx).
 		Model(&models.Repository{}).
 		Where("id = ?", id).

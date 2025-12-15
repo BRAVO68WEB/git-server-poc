@@ -9,6 +9,7 @@ import (
 	"github.com/bravo68web/githut/internal/domain/models"
 	"github.com/bravo68web/githut/internal/domain/repository"
 	apperror "github.com/bravo68web/githut/pkg/errors"
+	"github.com/google/uuid"
 )
 
 // UserRepoImpl implements the UserRepository interface using GORM
@@ -33,7 +34,7 @@ func (r *UserRepoImpl) Create(ctx context.Context, user *models.User) error {
 }
 
 // FindByID retrieves a user by their ID
-func (r *UserRepoImpl) FindByID(ctx context.Context, id uint) (*models.User, error) {
+func (r *UserRepoImpl) FindByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
 	var user models.User
 	if err := r.db.WithContext(ctx).First(&user, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -84,7 +85,7 @@ func (r *UserRepoImpl) Update(ctx context.Context, user *models.User) error {
 }
 
 // Delete removes a user from the database by their ID
-func (r *UserRepoImpl) Delete(ctx context.Context, id uint) error {
+func (r *UserRepoImpl) Delete(ctx context.Context, id uuid.UUID) error {
 	result := r.db.WithContext(ctx).Delete(&models.User{}, id)
 	if result.Error != nil {
 		return apperror.DatabaseError("delete user", result.Error)
