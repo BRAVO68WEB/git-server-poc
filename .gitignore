@@ -1,7 +1,5 @@
-# If you prefer the allow list template instead of the deny list, see community template:
-# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
-#
-# Binaries for programs and plugins
+# Binaries
+bin/
 *.exe
 *.exe~
 *.dll
@@ -11,30 +9,93 @@
 # Test binary, built with `go test -c`
 *.test
 
-# Code coverage profiles and other test artifacts
+# Output of the go coverage tool
+coverage/
 *.out
-coverage.*
-*.coverprofile
-profile.cov
+*.html
 
-# Dependency directories (remove the comment below to include it)
-# vendor/
-
-# Go workspace file
+# Go workspace files
 go.work
 go.work.sum
 
-# env file
-.env
+# Dependency directories
+vendor/
 
-# Editor/IDE
-# .idea/
+# IDE and editor files
+.idea/
 .vscode/
-data/
-githut
-tmp/
-dist/
-.air/
-githut.yaml
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
 
-!cmd/githut
+# Build output
+dist/
+build/
+
+# Local configuration (keep example)
+configs/config.yaml
+!configs/config.yaml.example
+
+# Environment files
+.env
+.env.local
+.env.*.local
+*.env
+
+# SSH keys (keep examples)
+ssh_host_key
+ssh_host_key.pub
+*.pem
+*.key
+
+# Logs
+logs/
+*.log
+
+# Repository data
+data/repos/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+
+# Compiled Object files, Static and Dynamic libs
+*.o
+*.a
+*.lib
+
+# Debug files
+debug
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# Air live reload
+.air.toml
+tmp/
+
+# Docker
+.docker/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Profiling
+*.prof
+*.cpu
+*.mem

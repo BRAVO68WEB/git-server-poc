@@ -1,0 +1,44 @@
+# Git Server Configuration
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+  mode: "debug"  # debug, release, test
+
+database:
+  host: "localhost"
+  port: 5432
+  user: "gitserver"
+  password: "password"
+  dbname: "gitserver"
+  sslmode: "disable"
+
+storage:
+  type: "filesystem"  # filesystem, s3
+  base_path: "./data/repos"
+  # S3 configuration (only used when type is "s3")
+  # s3_bucket: "git-repos"
+  # s3_region: "us-east-1"
+  # s3_access_key: ""
+  # s3_secret_key: ""
+  # s3_endpoint: ""  # For S3-compatible services like MinIO
+
+ssh:
+  enabled: true
+  host: "0.0.0.0"
+  port: 2222
+  host_key_path: "./ssh_host_key"
+
+# OPA (Open Policy Agent) Authorization
+# Uses the embedded OPA Go SDK - no external server required
+opa:
+  enabled: false
+  # Path to the Rego policy file
+  policy_path: "./policies/rbac.rego"
+  # OPA query to evaluate (default: data.gitserver.authz.allow)
+  query: "data.gitserver.authz.allow"
+
+logging:
+  level: "info"  # debug, info, warn, error
+  output_path: "stdout"  # stdout, stderr, or file path
+  format: "json"  # json, console
