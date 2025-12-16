@@ -3,6 +3,7 @@ package handler
 import (
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 
@@ -82,6 +83,7 @@ func (h *GitHandler) HandleInfoRefs(c *gin.Context) {
 		Service:  service,
 	})
 	if err != nil {
+		log.Printf("ERROR: GetInfoRefs failed for repo %s/%s (path: %s): %v", owner, repoName, repo.GitPath, err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "internal_error",
 			"message": "Failed to get repository info",
@@ -266,14 +268,22 @@ func (h *GitHandler) HandleGetHEAD(c *gin.Context) {
 	c.Writer.Write(data)
 }
 
-// HandleGetObject handles GET /{owner}/{repo}/objects/{hash} (dumb protocol)
+// HandleGetObject handles GET /{owner}/{repo}/objects/:dir/:file or /objects/pack/:packfile (dumb protocol)
 func (h *GitHandler) HandleGetObject(c *gin.Context) {
 	owner := c.Param("owner")
 	repoName := c.Param("repo")
 	repoName = strings.TrimSuffix(repoName, ".git")
 
-	// Get object path from wildcard
-	objectPath := c.Param("path")
+	// Build object path from route params
+	// Handles both loose objects (/:dir/:file) and pack files (/pack/:packfile)
+	var objectPath string
+	if packfile := c.Param("packfile"); packfile != "" {
+		objectPath = "pack/" + packfile
+	} else {
+		dir := c.Param("dir")
+		file := c.Param("file")
+		objectPath = dir + "/" + file
+	}
 
 	repo, err := h.repoService.GetRepository(c.Request.Context(), owner, repoName)
 	if err != nil {
@@ -309,13 +319,19 @@ func (h *GitHandler) HandleGetObject(c *gin.Context) {
 	io.Copy(c.Writer, reader)
 }
 
-// HandleGetRefs handles GET /{owner}/{repo}/refs/* (dumb protocol)
+// HandleGetRefs handles GET /{owner}/{repo}/refs/heads/:branch or /refs/tags/:tag (dumb protocol)
 func (h *GitHandler) HandleGetRefs(c *gin.Context) {
 	owner := c.Param("owner")
 	repoName := c.Param("repo")
 	repoName = strings.TrimSuffix(repoName, ".git")
 
-	refPath := c.Param("path")
+	// Build ref path from route params
+	var refPath string
+	if branch := c.Param("branch"); branch != "" {
+		refPath = "heads/" + branch
+	} else if tag := c.Param("tag"); tag != "" {
+		refPath = "tags/" + tag
+	}
 
 	repo, err := h.repoService.GetRepository(c.Request.Context(), owner, repoName)
 	if err != nil {

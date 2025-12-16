@@ -81,7 +81,9 @@ func (p *GitProtocol) GetInfoRefs(ctx context.Context, req InfoRefsRequest) (*In
 	buf.WriteString("0000") // Flush packet
 
 	// Get refs using git command
-	cmd := exec.CommandContext(ctx, "git", string(req.Service), "--stateless-rpc", "--advertise-refs", req.RepoPath)
+	// Remove "git-" prefix from service name (e.g., "git-receive-pack" -> "receive-pack")
+	serviceName := strings.TrimPrefix(string(req.Service), "git-")
+	cmd := exec.CommandContext(ctx, "git", serviceName, "--stateless-rpc", "--advertise-refs", req.RepoPath)
 	cmd.Dir = req.RepoPath
 
 	var stdout, stderr bytes.Buffer
@@ -89,7 +91,7 @@ func (p *GitProtocol) GetInfoRefs(ctx context.Context, req InfoRefsRequest) (*In
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("failed to advertise refs: %w", err)
+		return nil, fmt.Errorf("failed to advertise refs: %w (stderr: %s, repoPath: %s)", err, stderr.String(), req.RepoPath)
 	}
 
 	buf.Write(stdout.Bytes())
@@ -122,7 +124,9 @@ func (p *GitProtocol) HandleReceivePack(ctx context.Context, repoPath string, in
 
 // runGitService executes a git service command
 func (p *GitProtocol) runGitService(ctx context.Context, repoPath string, service ServiceType, input io.Reader, output io.Writer) error {
-	cmd := exec.CommandContext(ctx, "git", string(service), "--stateless-rpc", repoPath)
+	// Remove "git-" prefix from service name (e.g., "git-receive-pack" -> "receive-pack")
+	serviceName := strings.TrimPrefix(string(service), "git-")
+	cmd := exec.CommandContext(ctx, "git", serviceName, "--stateless-rpc", repoPath)
 	cmd.Dir = repoPath
 	cmd.Stdin = input
 	cmd.Stdout = output

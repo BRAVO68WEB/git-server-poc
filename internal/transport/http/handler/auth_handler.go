@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -34,6 +35,7 @@ func NewAuthHandler(
 func (h *AuthHandler) Register(c *gin.Context) {
 	var req dto.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Print("error occured yeh lehhh: " + err.Error())
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   "bad_request",
 			"message": "Invalid request body",
