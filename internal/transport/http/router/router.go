@@ -29,4 +29,5 @@ func (r *Router) RegisterRoutes() {
 	r.healthRouter()
 	r.authRouter()
 	r.repoRouter()
+	r.gitRouter()
 }
