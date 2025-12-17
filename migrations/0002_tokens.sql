@@ -1,8 +1,0 @@
-CREATE TABLE IF NOT EXISTS tokens (
-  id BIGSERIAL PRIMARY KEY,
-  user_id BIGINT REFERENCES users(id),
-  name TEXT NOT NULL,
-  token_hash TEXT UNIQUE NOT NULL,
-  revoked BOOLEAN DEFAULT FALSE,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
