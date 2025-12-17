@@ -4,6 +4,7 @@ server:
   host: "0.0.0.0"
   port: 8080
   mode: "debug"  # debug, release, test
+  hosted_url: "https://git.example.com" # Public URL where the server is hosted
 
 database:
   host: "localhost"
