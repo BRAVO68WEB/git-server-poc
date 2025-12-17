@@ -26,6 +26,8 @@ func (r *Router) RegisterRoutes() {
 	// Apply CORS middleware
 	r.server.Use(cors.Default())
 
+	r.docsRouter()
+
 	r.healthRouter()
 	r.authRouter()
 	r.repoRouter()

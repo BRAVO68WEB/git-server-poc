@@ -3,6 +3,7 @@ module github.com/bravo68web/githut
 go 1.25.3
 
 require (
+	github.com/PeterTakahashi/gin-openapi v0.1.0
 	github.com/aws/aws-sdk-go-v2 v1.41.0
 	github.com/aws/aws-sdk-go-v2/config v1.32.6
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.6
