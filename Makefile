@@ -47,6 +47,43 @@ build-server:
 	@echo "Building server..."
 	@go build -o bin/$(SERVER_BINARY_NAME) $(SERVER_MAIN_PKG)
 
+
+## watch-server: run the server application with reloading on file changes
+.PHONY: watch-server
+watch-server:
+	@if command -v air > /dev/null; then \
+		    air --build.cmd "make build-server" --build.bin "bin/githut-server"; \
+		    echo "Watching...";\
+		else \
+		    read -p "Go's 'air' is not installed on your machine. Do you want to install it? [Y/n] " choice; \
+		    if [ "$$choice" != "n" ] && [ "$$choice" != "N" ]; then \
+		        go install github.com/air-verse/air@latest; \
+		        air --build.cmd "make build-server" --build.bin "bin/githut-server"; \
+		        echo "Watching...";\
+		    else \
+		        echo "You chose not to install air. Exiting..."; \
+		        exit 1; \
+		    fi; \
+		fi
+
+## watch-cli: run the cli with reloading on file changes
+.PHONY: watch-cli
+watch-cli:
+	@if command -v air > /dev/null; then \
+		    air --build.cmd "make build-cli" --build.bin "bin/githut-cli"; \
+		    echo "Watching...";\
+		else \
+		    read -p "Go's 'air' is not installed on your machine. Do you want to install it? [Y/n] " choice; \
+		    if [ "$$choice" != "n" ] && [ "$$choice" != "N" ]; then \
+		        go install github.com/air-verse/air@latest; \
+		        air --build.cmd "make build-cli" --build.bin "bin/githut-cli"; \
+		        echo "Watching...";\
+		    else \
+		        echo "You chose not to install air. Exiting..."; \
+		        exit 1; \
+		    fi; \
+		fi
+
 ## help: print this help message
 .PHONY: help
 help:

@@ -84,8 +84,8 @@ debug
 *.pdb
 
 # Air live reload
-.air.toml
 tmp/
+bin/
 
 # Docker
 .docker/
