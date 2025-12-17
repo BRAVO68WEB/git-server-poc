@@ -1,3 +1,118 @@
+// User types
+export interface UserInfo {
+  id: string;
+  username: string;
+  email: string;
+  is_admin: boolean;
+}
+
+export interface RegisterRequest {
+  username: string;
+  email: string;
+  password: string;
+}
+
+export interface RegisterResponse {
+  user: UserInfo;
+  message: string;
+}
+
+export interface ChangePasswordRequest {
+  current_password: string;
+  new_password: string;
+}
+
+// Repository types
+export interface CreateRepoRequest {
+  name: string;
+  description?: string;
+  is_private?: boolean;
+}
+
+export interface UpdateRepoRequest {
+  description?: string;
+  is_private?: boolean;
+}
+
+export interface RepoResponse {
+  id: string;
+  name: string;
+  owner: string;
+  owner_id: string;
+  is_private: boolean;
+  description: string;
+  clone_url: string;
+  ssh_url: string;
+  git_path?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RepoListResponse {
+  repositories: RepoResponse[];
+  total: number;
+}
+
+export interface PublicRepoListResponse {
+  repositories: RepoResponse[];
+  page: number;
+  per_page: number;
+  total: number;
+}
+
+export interface RepoStats {
+  commits: number;
+  branches: number;
+  tags: number;
+  contributors: number;
+  size_bytes: number;
+}
+
+// Branch types
+export interface BranchRequest {
+  name: string;
+  commit_hash: string;
+}
+
+export interface BranchResponse {
+  name: string;
+  hash: string;
+  is_head: boolean;
+}
+
+export interface BranchListResponse {
+  branches: BranchResponse[];
+  total: number;
+}
+
+// Tag types
+export interface TagRequest {
+  name: string;
+  commit_hash: string;
+  message?: string;
+}
+
+export interface TagResponse {
+  name: string;
+  hash: string;
+  message?: string;
+  tagger?: string;
+  is_annotated: boolean;
+}
+
+export interface TagListResponse {
+  tags: TagResponse[];
+  total: number;
+}
+
+// Error types
+export interface ErrorResponse {
+  error: string;
+  message: string;
+  details?: string;
+}
+
+// Legacy types for existing components (tree, blob, commits views)
 export interface Repo {
   owner: string;
   name: string;
@@ -35,4 +150,16 @@ export interface BlameLine {
   author: string;
   date: string;
   content: string;
+}
+
+// API Response wrapper for success messages
+export interface SuccessResponse {
+  message: string;
+}
+
+// Auth token storage
+export interface AuthState {
+  token: string | null;
+  user: UserInfo | null;
+  isAuthenticated: boolean;
 }
