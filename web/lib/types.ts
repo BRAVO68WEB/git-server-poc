@@ -179,8 +179,16 @@ export interface BlameLine {
   line_no: number;
   commit: string;
   author: string;
+  email?: string;
   date: string;
   content: string;
+}
+
+export interface BlameResponse {
+  blame: BlameLine[];
+  path: string;
+  ref: string;
+  total: number;
 }
 
 // API Response wrapper for success messages

@@ -725,6 +725,43 @@ func (h *RepoHandler) GetFileContent(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
+// GetBlame handles GET /api/repos/:owner/:repo/blame/:ref/*path
+func (h *RepoHandler) GetBlame(c *gin.Context) {
+	owner := c.Param("owner")
+	repoName := c.Param("repo")
+	ref := c.Param("ref")
+	path := c.Param("path")
+
+	repo, err := h.repoService.GetRepository(c.Request.Context(), owner, repoName)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+
+	// Check access
+	user := middleware.GetUserFromContext(c)
+	if repo.IsPrivate && (user == nil || (user.ID != repo.OwnerID && !user.IsAdmin)) {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":   "not_found",
+			"message": "Repository not found",
+		})
+		return
+	}
+
+	blameLines, err := h.repoService.GetBlame(c.Request.Context(), repo, ref, path)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":   "not_found",
+			"message": "Unable to get blame information",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	response := dto.BlameFromService(blameLines, path, ref)
+	c.JSON(http.StatusOK, response)
+}
+
 // handleError handles errors and returns appropriate HTTP responses
 func (h *RepoHandler) handleError(c *gin.Context, err error) {
 	if apperrors.IsNotFound(err) {

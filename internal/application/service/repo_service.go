@@ -352,6 +352,11 @@ func (s *RepoService) GetFileContent(ctx context.Context, repo *models.Repositor
 	return s.gitService.GetFileContent(ctx, repo.GitPath, ref, filePath)
 }
 
+// GetBlame returns blame information for a file in a repository
+func (s *RepoService) GetBlame(ctx context.Context, repo *models.Repository, ref, filePath string) ([]service.BlameLine, error) {
+	return s.gitService.GetBlame(ctx, repo.GitPath, ref, filePath)
+}
+
 // ForkRepository creates a fork of a repository
 func (s *RepoService) ForkRepository(ctx context.Context, sourceRepoID, newOwnerID uuid.UUID, newName string) (*models.Repository, error) {
 	// Get source repository

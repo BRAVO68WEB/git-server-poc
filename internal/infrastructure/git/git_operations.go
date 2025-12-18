@@ -913,5 +913,49 @@ func min(a, b int) int {
 	return b
 }
 
+// GetBlame returns blame information for a file at a given ref
+func (g *GitOperations) GetBlame(ctx context.Context, repoPath, ref, filePath string) ([]service.BlameLine, error) {
+	repo, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open repository: %w", err)
+	}
+
+	// Resolve the ref to a commit hash
+	hash, err := g.resolveRef(repo, ref)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve ref '%s': %w", ref, err)
+	}
+
+	// Get the commit
+	commit, err := repo.CommitObject(hash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get commit: %w", err)
+	}
+
+	// Clean up file path
+	filePath = strings.TrimPrefix(filePath, "/")
+
+	// Get blame result using go-git's blame functionality
+	blameResult, err := git.Blame(commit, filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get blame for '%s': %w", filePath, err)
+	}
+
+	// Convert blame result to our BlameLine format
+	blameLines := make([]service.BlameLine, len(blameResult.Lines))
+	for i, line := range blameResult.Lines {
+		blameLines[i] = service.BlameLine{
+			LineNo:  i + 1,
+			Commit:  line.Hash.String(),
+			Author:  line.AuthorName,
+			Email:   line.Author,
+			Date:    line.Date,
+			Content: line.Text,
+		}
+	}
+
+	return blameLines, nil
+}
+
 // Verify interface compliance at compile time
 var _ service.GitService = (*GitOperations)(nil)

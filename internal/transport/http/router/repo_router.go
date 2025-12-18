@@ -57,6 +57,9 @@ func (r *Router) repoRouter() {
 
 			// File content routes
 			repoRoutes.GET("/blob/:ref/*path", authMiddleware.Authenticate(), h.GetFileContent)
+
+			// Blame routes
+			repoRoutes.GET("/blame/:ref/*path", authMiddleware.Authenticate(), h.GetBlame)
 		}
 	}
 }

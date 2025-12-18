@@ -193,6 +193,50 @@ func TreeFromService(entries []service.TreeEntry, path, ref string) TreeResponse
 	}
 }
 
+// BlameLineResponse represents a single line in blame output for API responses
+type BlameLineResponse struct {
+	LineNo  int    `json:"line_no"`
+	Commit  string `json:"commit"`
+	Author  string `json:"author"`
+	Email   string `json:"email,omitempty"`
+	Date    string `json:"date"`
+	Content string `json:"content"`
+}
+
+// BlameResponse represents blame information for a file in API responses
+type BlameResponse struct {
+	Blame []BlameLineResponse `json:"blame"`
+	Path  string              `json:"path"`
+	Ref   string              `json:"ref"`
+	Total int                 `json:"total"`
+}
+
+// BlameLineFromService converts a service.BlameLine to BlameLineResponse DTO
+func BlameLineFromService(b service.BlameLine) BlameLineResponse {
+	return BlameLineResponse{
+		LineNo:  b.LineNo,
+		Commit:  b.Commit,
+		Author:  b.Author,
+		Email:   b.Email,
+		Date:    b.Date.Format(time.RFC3339),
+		Content: b.Content,
+	}
+}
+
+// BlameFromService converts a slice of service.BlameLine to BlameResponse
+func BlameFromService(lines []service.BlameLine, path, ref string) BlameResponse {
+	responses := make([]BlameLineResponse, len(lines))
+	for i, line := range lines {
+		responses[i] = BlameLineFromService(line)
+	}
+	return BlameResponse{
+		Blame: responses,
+		Path:  path,
+		Ref:   ref,
+		Total: len(responses),
+	}
+}
+
 // FileContentFromService converts a service.FileContent to FileContentResponse DTO
 func FileContentFromService(f *service.FileContent, ref string) FileContentResponse {
 	content := string(f.Content)

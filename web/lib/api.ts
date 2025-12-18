@@ -465,8 +465,30 @@ export async function getBlame(
   name: string,
   urlPath: string,
 ): Promise<{ ref: string; path: string; blame: BlameLine[] }> {
-  const url = `${API_URL}/api/repos/${owner}/${name}/blame/${urlPath}`;
-  const res = await fetch(url, { cache: "no-store" });
+  // Parse urlPath to extract ref and path
+  // urlPath format: "ref/path/to/file"
+  const parts = urlPath.split("/");
+  const ref = parts[0] || "HEAD";
+  const path = parts.slice(1).join("/");
+
+  const token =
+    typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+  };
+  if (token) {
+    (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
+  }
+
+  const url = `${API_URL}/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/blame/${encodeURIComponent(ref)}/${path.split("/").map(encodeURIComponent).join("/")}`;
+
+  const res = await fetch(url, { cache: "no-store", headers });
   if (!res.ok) throw new Error("Failed to fetch blame");
-  return res.json();
+
+  const data = await res.json();
+  return {
+    ref: data.ref,
+    path: data.path,
+    blame: data.blame,
+  };
 }

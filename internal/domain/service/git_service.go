@@ -64,6 +64,16 @@ type FileContent struct {
 	Encoding string // "utf-8", "base64" for binary files
 }
 
+// BlameLine represents a single line in a blame output
+type BlameLine struct {
+	LineNo  int
+	Commit  string
+	Author  string
+	Email   string
+	Date    time.Time
+	Content string
+}
+
 // GitService defines the interface for Git repository operations
 type GitService interface {
 	// Repository operations
@@ -155,4 +165,8 @@ type GitService interface {
 	// File operations
 	// GetFileContent returns the content of a file at a given ref and path
 	GetFileContent(ctx context.Context, repoPath, ref, filePath string) (*FileContent, error)
+
+	// Blame operations
+	// GetBlame returns blame information for a file at a given ref
+	GetBlame(ctx context.Context, repoPath, ref, filePath string) ([]BlameLine, error)
 }
