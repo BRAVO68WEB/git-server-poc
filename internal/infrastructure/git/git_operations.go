@@ -27,7 +27,7 @@ type GitOperations struct {
 }
 
 // NewGitOperations creates a new GitOperations instance
-func NewGitOperations(storage service.StorageService) *GitOperations {
+func NewGitOperations(storage service.StorageService) service.GitService {
 	return &GitOperations{
 		storage: storage,
 	}

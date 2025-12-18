@@ -37,7 +37,7 @@ export default async function CommitsIndexPage({
 
   if (failed) {
     return (
-      <div className="p-6 text-sm text-base border border-base rounded-md bg-panel">
+      <div className="p-6 text-sm border border-base rounded-md bg-panel">
         Unable to load commits.
         <div className="mt-2">
           <Link
@@ -59,7 +59,7 @@ export default async function CommitsIndexPage({
           {ref}
         </span>
       </div>
-      <div className="divide-y divide-[var(--border-base)]">
+      <div className="divide-y divide-(--border-base)">
         {commits.map((commit) => (
           <div
             key={commit.hash}

@@ -57,14 +57,12 @@ export default async function RepoPage({
           </div>
         </div>
         <div className="p-8 text-center border border-base rounded-lg bg-panel">
-          <h3 className="text-lg font-medium text-base mb-2">
-            Empty Repository
-          </h3>
+          <h3 className="text-lg font-medium mb-2">Empty Repository</h3>
           <p className="text-muted">
             This repository seems to be empty or does not have a HEAD reference.
           </p>
           <div className="mt-4 p-4 bg-base rounded text-left overflow-x-auto">
-            <pre className="text-sm text-base">
+            <pre className="text-sm">
               {`git clone ${httpUrl}
 cd ${repo}
 echo "# ${repo}" >> README.md

@@ -48,7 +48,7 @@ export default async function CommitsPage({
         <div className="px-4 py-3 border-b border-base">
           <span className="font-semibold text-base">Commits</span>
         </div>
-        <div className="p-4 text-sm text-base">
+        <div className="p-4 text-base">
           Unable to load commits.
           <div className="mt-2">
             <Link
@@ -78,7 +78,7 @@ export default async function CommitsPage({
             </>
           )}
         </div>
-        <div className="p-6 text-sm text-base">No commits found.</div>
+        <div className="p-6 text-base">No commits found.</div>
       </div>
     );
   }
@@ -97,7 +97,7 @@ export default async function CommitsPage({
           </>
         )}
       </div>
-      <div className="divide-y divide-[var(--border-base)]">
+      <div className="divide-y divide-(--border-base)">
         {commits.map((commit) => (
           <div
             key={commit.hash}

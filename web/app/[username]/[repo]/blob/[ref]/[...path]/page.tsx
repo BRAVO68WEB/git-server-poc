@@ -1,6 +1,7 @@
 import { getBlob, getBlame } from "@/lib/api";
 import Link from "next/link";
 import { BlameLine } from "@/lib/types";
+import Image from "next/image";
 
 export default async function BlobPage({
   params,
@@ -51,7 +52,7 @@ export default async function BlobPage({
 
   if (failed) {
     return (
-      <div className="p-6 text-sm text-base border border-base rounded-md bg-panel">
+      <div className="p-6 text-base border border-base rounded-md bg-panel">
         Unable to load file.
         <div className="mt-2">
           <Link
@@ -125,7 +126,7 @@ export default async function BlobPage({
         <div className="p-4">
           {isImage ? (
             <div className="flex justify-center">
-              <img
+              <Image
                 src={`data:image/${fileExtension};base64,${content}`}
                 alt={path}
                 className="max-w-full h-auto"
