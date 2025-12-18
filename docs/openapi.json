@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "GitHut - Git Server API",
-    "description": "A self-hosted Git server API that provides repository management, authentication, and Git Smart HTTP protocol support.",
+    "description": "A self-hosted Git server API that provides repository management, authentication, SSH key management, and Git Smart HTTP protocol support.",
     "version": "1.0.0",
     "contact": {
       "name": "Bravo68Web"
@@ -27,6 +27,10 @@
       "description": "User authentication and registration"
     },
     {
+      "name": "SSH Keys",
+      "description": "SSH key management for Git SSH access"
+    },
+    {
       "name": "Repositories",
       "description": "Repository management operations"
     },
@@ -37,6 +41,14 @@
     {
       "name": "Tags",
       "description": "Tag management operations"
+    },
+    {
+      "name": "Commits",
+      "description": "Commit history and details"
+    },
+    {
+      "name": "Code",
+      "description": "File tree, content, and blame information"
     },
     {
       "name": "Git Protocol",
@@ -159,7 +171,7 @@
       "post": {
         "tags": ["Authentication"],
         "summary": "Change password",
-        "description": "Changes the password for the authenticated user",
+        "description": "Changes the current user's password",
         "operationId": "changePassword",
         "security": [{ "bearerAuth": [] }, { "basicAuth": [] }],
         "requestBody": {
@@ -212,12 +224,222 @@
         }
       }
     },
+    "/api/v1/ssh-keys": {
+      "get": {
+        "tags": ["SSH Keys"],
+        "summary": "List SSH keys",
+        "description": "Returns all SSH keys for the authenticated user",
+        "operationId": "listSSHKeys",
+        "security": [{ "bearerAuth": [] }, { "basicAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "List of SSH keys",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListSSHKeysResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["SSH Keys"],
+        "summary": "Add SSH key",
+        "description": "Adds a new SSH public key for the authenticated user",
+        "operationId": "addSSHKey",
+        "security": [{ "bearerAuth": [] }, { "basicAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddSSHKeyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "SSH key added successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddSSHKeyResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid SSH key format",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "SSH key already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ssh-keys/{id}": {
+      "get": {
+        "tags": ["SSH Keys"],
+        "summary": "Get SSH key",
+        "description": "Returns a specific SSH key by ID",
+        "operationId": "getSSHKey",
+        "security": [{ "bearerAuth": [] }, { "basicAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "SSH key ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSH key information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SSHKeyInfo"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SSH key not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["SSH Keys"],
+        "summary": "Delete SSH key",
+        "description": "Deletes an SSH key by ID",
+        "operationId": "deleteSSHKey",
+        "security": [{ "bearerAuth": [] }, { "basicAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "SSH key ID",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSH key deleted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "SSH key deleted successfully"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SSH key not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/repos": {
       "get": {
         "tags": ["Repositories"],
-        "summary": "List user repositories",
-        "description": "Returns all repositories owned by the authenticated user",
-        "operationId": "listUserRepositories",
+        "summary": "List repositories",
+        "description": "Returns all repositories for the authenticated user",
+        "operationId": "listRepositories",
         "security": [{ "bearerAuth": [] }, { "basicAuth": [] }],
         "responses": {
           "200": {
@@ -256,8 +478,8 @@
       },
       "post": {
         "tags": ["Repositories"],
-        "summary": "Create a repository",
-        "description": "Creates a new repository for the authenticated user",
+        "summary": "Create repository",
+        "description": "Creates a new Git repository",
         "operationId": "createRepository",
         "security": [{ "bearerAuth": [] }, { "basicAuth": [] }],
         "requestBody": {
@@ -282,7 +504,7 @@
             }
           },
           "400": {
-            "description": "Invalid request body or validation error",
+            "description": "Invalid request body",
             "content": {
               "application/json": {
                 "schema": {
@@ -318,13 +540,13 @@
       "get": {
         "tags": ["Repositories"],
         "summary": "List public repositories",
-        "description": "Returns a paginated list of all public repositories",
+        "description": "Returns all public repositories with pagination",
         "operationId": "listPublicRepositories",
         "parameters": [
           {
             "name": "page",
             "in": "query",
-            "description": "Page number (starting from 1)",
+            "description": "Page number",
             "schema": {
               "type": "integer",
               "default": 1,
@@ -334,7 +556,7 @@
           {
             "name": "per_page",
             "in": "query",
-            "description": "Number of items per page",
+            "description": "Items per page",
             "schema": {
               "type": "integer",
               "default": 20,
@@ -367,7 +589,11 @@
                     },
                     "total": {
                       "type": "integer",
-                      "example": 50
+                      "example": 42
+                    },
+                    "total_pages": {
+                      "type": "integer",
+                      "example": 3
                     }
                   }
                 }
@@ -380,8 +606,8 @@
     "/api/v1/repos/{owner}/{repo}": {
       "get": {
         "tags": ["Repositories"],
-        "summary": "Get a repository",
-        "description": "Returns details of a specific repository",
+        "summary": "Get repository",
+        "description": "Returns repository details",
         "operationId": "getRepository",
         "security": [{ "bearerAuth": [] }, { "basicAuth": [] }, {}],
         "parameters": [
@@ -413,8 +639,8 @@
       },
       "patch": {
         "tags": ["Repositories"],
-        "summary": "Update a repository",
-        "description": "Updates repository settings (description, visibility)",
+        "summary": "Update repository",
+        "description": "Updates repository settings",
         "operationId": "updateRepository",
         "security": [{ "bearerAuth": [] }, { "basicAuth": [] }],
         "parameters": [
@@ -486,8 +712,8 @@
       },
       "delete": {
         "tags": ["Repositories"],
-        "summary": "Delete a repository",
-        "description": "Permanently deletes a repository",
+        "summary": "Delete repository",
+        "description": "Deletes a repository and all its data",
         "operationId": "deleteRepository",
         "security": [{ "bearerAuth": [] }, { "basicAuth": [] }],
         "parameters": [
@@ -547,8 +773,8 @@
     "/api/v1/repos/{owner}/{repo}/stats": {
       "get": {
         "tags": ["Repositories"],
-        "summary": "Get repository statistics",
-        "description": "Returns statistics for a specific repository",
+        "summary": "Get repository stats",
+        "description": "Returns repository statistics",
         "operationId": "getRepositoryStats",
         "security": [{ "bearerAuth": [] }, { "basicAuth": [] }, {}],
         "parameters": [
@@ -615,8 +841,8 @@
       },
       "post": {
         "tags": ["Branches"],
-        "summary": "Create a branch",
-        "description": "Creates a new branch from a specific commit",
+        "summary": "Create branch",
+        "description": "Creates a new branch from a commit",
         "operationId": "createBranch",
         "security": [{ "bearerAuth": [] }, { "basicAuth": [] }],
         "parameters": [
@@ -693,6 +919,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Branch already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -700,7 +936,7 @@
     "/api/v1/repos/{owner}/{repo}/branches/{branch}": {
       "delete": {
         "tags": ["Branches"],
-        "summary": "Delete a branch",
+        "summary": "Delete branch",
         "description": "Deletes a branch from the repository",
         "operationId": "deleteBranch",
         "security": [{ "bearerAuth": [] }, { "basicAuth": [] }],
@@ -745,7 +981,7 @@
             }
           },
           "403": {
-            "description": "Permission denied",
+            "description": "Permission denied or cannot delete default branch",
             "content": {
               "application/json": {
                 "schema": {
@@ -803,8 +1039,8 @@
       },
       "post": {
         "tags": ["Tags"],
-        "summary": "Create a tag",
-        "description": "Creates a new tag pointing to a specific commit",
+        "summary": "Create tag",
+        "description": "Creates a new tag pointing to a commit",
         "operationId": "createTag",
         "security": [{ "bearerAuth": [] }, { "basicAuth": [] }],
         "parameters": [
@@ -881,6 +1117,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Tag already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -888,7 +1134,7 @@
     "/api/v1/repos/{owner}/{repo}/tags/{tag}": {
       "delete": {
         "tags": ["Tags"],
-        "summary": "Delete a tag",
+        "summary": "Delete tag",
         "description": "Deletes a tag from the repository",
         "operationId": "deleteTag",
         "security": [{ "bearerAuth": [] }, { "basicAuth": [] }],
@@ -955,11 +1201,297 @@
         }
       }
     },
+    "/api/v1/repos/{owner}/{repo}/commits": {
+      "get": {
+        "tags": ["Commits"],
+        "summary": "List commits",
+        "description": "Returns commit history for a repository",
+        "operationId": "listCommits",
+        "security": [{ "bearerAuth": [] }, { "basicAuth": [] }, {}],
+        "parameters": [
+          { "$ref": "#/components/parameters/owner" },
+          { "$ref": "#/components/parameters/repo" },
+          {
+            "name": "ref",
+            "in": "query",
+            "description": "Git reference (branch, tag, or commit SHA). Defaults to default branch.",
+            "schema": {
+              "type": "string",
+              "example": "main"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Page number",
+            "schema": {
+              "type": "integer",
+              "default": 1,
+              "minimum": 1
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "description": "Commits per page",
+            "schema": {
+              "type": "integer",
+              "default": 30,
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of commits",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitListResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Repository not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/repos/{owner}/{repo}/commits/{sha}": {
+      "get": {
+        "tags": ["Commits"],
+        "summary": "Get commit",
+        "description": "Returns details for a specific commit",
+        "operationId": "getCommit",
+        "security": [{ "bearerAuth": [] }, { "basicAuth": [] }, {}],
+        "parameters": [
+          { "$ref": "#/components/parameters/owner" },
+          { "$ref": "#/components/parameters/repo" },
+          {
+            "name": "sha",
+            "in": "path",
+            "required": true,
+            "description": "Commit SHA",
+            "schema": {
+              "type": "string",
+              "minLength": 7,
+              "maxLength": 40,
+              "example": "abc1234567890def"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Commit details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Repository or commit not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/repos/{owner}/{repo}/tree/{ref}": {
+      "get": {
+        "tags": ["Code"],
+        "summary": "Get tree root",
+        "description": "Returns the root directory listing for a ref",
+        "operationId": "getTreeRoot",
+        "security": [{ "bearerAuth": [] }, { "basicAuth": [] }, {}],
+        "parameters": [
+          { "$ref": "#/components/parameters/owner" },
+          { "$ref": "#/components/parameters/repo" },
+          { "$ref": "#/components/parameters/ref" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tree listing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TreeResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Repository or ref not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/repos/{owner}/{repo}/tree/{ref}/{path}": {
+      "get": {
+        "tags": ["Code"],
+        "summary": "Get tree at path",
+        "description": "Returns directory listing at a specific path",
+        "operationId": "getTreeAtPath",
+        "security": [{ "bearerAuth": [] }, { "basicAuth": [] }, {}],
+        "parameters": [
+          { "$ref": "#/components/parameters/owner" },
+          { "$ref": "#/components/parameters/repo" },
+          { "$ref": "#/components/parameters/ref" },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "description": "Path within the repository",
+            "schema": {
+              "type": "string",
+              "example": "src/components"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tree listing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TreeResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Repository, ref, or path not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/repos/{owner}/{repo}/blob/{ref}/{path}": {
+      "get": {
+        "tags": ["Code"],
+        "summary": "Get file content",
+        "description": "Returns the content of a file at a specific path and ref. Binary files are base64-encoded.",
+        "operationId": "getFileContent",
+        "security": [{ "bearerAuth": [] }, { "basicAuth": [] }, {}],
+        "parameters": [
+          { "$ref": "#/components/parameters/owner" },
+          { "$ref": "#/components/parameters/repo" },
+          { "$ref": "#/components/parameters/ref" },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "description": "File path within the repository",
+            "schema": {
+              "type": "string",
+              "example": "src/main.go"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "File content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileContentResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Repository, ref, or file not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/repos/{owner}/{repo}/blame/{ref}/{path}": {
+      "get": {
+        "tags": ["Code"],
+        "summary": "Get file blame",
+        "description": "Returns blame information for a file, showing which commit last modified each line",
+        "operationId": "getBlame",
+        "security": [{ "bearerAuth": [] }, { "basicAuth": [] }, {}],
+        "parameters": [
+          { "$ref": "#/components/parameters/owner" },
+          { "$ref": "#/components/parameters/repo" },
+          { "$ref": "#/components/parameters/ref" },
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "description": "File path within the repository",
+            "schema": {
+              "type": "string",
+              "example": "src/main.go"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Blame information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlameResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Repository, ref, or file not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/{owner}/{repo}/info/refs": {
       "get": {
         "tags": ["Git Protocol"],
         "summary": "Git info/refs",
-        "description": "Git Smart HTTP protocol - capability advertisement",
+        "description": "Git Smart HTTP protocol info/refs endpoint for capability advertisement",
         "operationId": "gitInfoRefs",
         "security": [{ "basicAuth": [] }, {}],
         "parameters": [
@@ -978,7 +1510,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Git refs info",
+            "description": "Git refs advertisement",
             "content": {
               "application/x-git-upload-pack-advertisement": {
                 "schema": {
@@ -1005,7 +1537,7 @@
             }
           },
           "403": {
-            "description": "Invalid service",
+            "description": "Permission denied",
             "content": {
               "application/json": {
                 "schema": {
@@ -1031,7 +1563,7 @@
       "post": {
         "tags": ["Git Protocol"],
         "summary": "Git upload-pack",
-        "description": "Git Smart HTTP protocol - handles fetch/clone operations",
+        "description": "Git Smart HTTP protocol endpoint for fetch/clone operations",
         "operationId": "gitUploadPack",
         "security": [{ "basicAuth": [] }, {}],
         "parameters": [
@@ -1051,7 +1583,7 @@
         },
         "responses": {
           "200": {
-            "description": "Git pack data",
+            "description": "Git upload-pack response",
             "content": {
               "application/x-git-upload-pack-result": {
                 "schema": {
@@ -1062,7 +1594,7 @@
             }
           },
           "400": {
-            "description": "Invalid content type",
+            "description": "Invalid request",
             "content": {
               "application/json": {
                 "schema": {
@@ -1098,7 +1630,7 @@
       "post": {
         "tags": ["Git Protocol"],
         "summary": "Git receive-pack",
-        "description": "Git Smart HTTP protocol - handles push operations",
+        "description": "Git Smart HTTP protocol endpoint for push operations",
         "operationId": "gitReceivePack",
         "security": [{ "basicAuth": [] }],
         "parameters": [
@@ -1118,7 +1650,7 @@
         },
         "responses": {
           "200": {
-            "description": "Push result",
+            "description": "Git receive-pack response",
             "content": {
               "application/x-git-receive-pack-result": {
                 "schema": {
@@ -1129,7 +1661,7 @@
             }
           },
           "400": {
-            "description": "Invalid content type",
+            "description": "Invalid request",
             "content": {
               "application/json": {
                 "schema": {
@@ -1175,8 +1707,8 @@
       "get": {
         "tags": ["Git Protocol"],
         "summary": "Get HEAD reference",
-        "description": "Git dumb HTTP protocol fallback - returns HEAD reference",
-        "operationId": "gitGetHead",
+        "description": "Dumb HTTP protocol endpoint to get the HEAD reference",
+        "operationId": "getHEAD",
         "security": [{ "basicAuth": [] }, {}],
         "parameters": [
           { "$ref": "#/components/parameters/owner" },
@@ -1210,9 +1742,9 @@
     "/{owner}/{repo}/objects/info/packs": {
       "get": {
         "tags": ["Git Protocol"],
-        "summary": "Get info/packs",
-        "description": "Git dumb HTTP protocol - returns pack file information",
-        "operationId": "gitGetInfoPacks",
+        "summary": "Get pack info",
+        "description": "Dumb HTTP protocol endpoint to list available pack files",
+        "operationId": "getInfoPacks",
         "security": [{ "basicAuth": [] }, {}],
         "parameters": [
           { "$ref": "#/components/parameters/owner" },
@@ -1220,7 +1752,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Pack information",
+            "description": "Pack file list",
             "content": {
               "text/plain": {
                 "schema": {
@@ -1245,9 +1777,9 @@
     "/{owner}/{repo}/objects/{dir}/{file}": {
       "get": {
         "tags": ["Git Protocol"],
-        "summary": "Get git object",
-        "description": "Git dumb HTTP protocol - returns loose git object",
-        "operationId": "gitGetObject",
+        "summary": "Get loose object",
+        "description": "Dumb HTTP protocol endpoint to retrieve a loose Git object",
+        "operationId": "getLooseObject",
         "security": [{ "basicAuth": [] }, {}],
         "parameters": [
           { "$ref": "#/components/parameters/owner" },
@@ -1256,7 +1788,7 @@
             "name": "dir",
             "in": "path",
             "required": true,
-            "description": "Object directory (first 2 chars of SHA)",
+            "description": "First 2 characters of the object SHA",
             "schema": {
               "type": "string",
               "minLength": 2,
@@ -1267,7 +1799,7 @@
             "name": "file",
             "in": "path",
             "required": true,
-            "description": "Object file (remaining 38 chars of SHA)",
+            "description": "Remaining 38 characters of the object SHA",
             "schema": {
               "type": "string",
               "minLength": 38,
@@ -1300,12 +1832,63 @@
         }
       }
     },
+    "/{owner}/{repo}/objects/pack/{packfile}": {
+      "get": {
+        "tags": ["Git Protocol"],
+        "summary": "Get pack file",
+        "description": "Dumb HTTP protocol endpoint to retrieve a pack file or index",
+        "operationId": "getPackFile",
+        "security": [{ "basicAuth": [] }, {}],
+        "parameters": [
+          { "$ref": "#/components/parameters/owner" },
+          { "$ref": "#/components/parameters/repo" },
+          {
+            "name": "packfile",
+            "in": "path",
+            "required": true,
+            "description": "Pack file name (e.g., pack-xxx.pack or pack-xxx.idx)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pack file data",
+            "content": {
+              "application/x-git-packed-objects": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "application/x-git-packed-objects-toc": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Pack file not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/{owner}/{repo}/refs/heads/{branch}": {
       "get": {
         "tags": ["Git Protocol"],
         "summary": "Get branch ref",
-        "description": "Git dumb HTTP protocol - returns branch reference",
-        "operationId": "gitGetBranchRef",
+        "description": "Dumb HTTP protocol endpoint to get a branch reference",
+        "operationId": "getBranchRef",
         "security": [{ "basicAuth": [] }, {}],
         "parameters": [
           { "$ref": "#/components/parameters/owner" },
@@ -1322,7 +1905,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Branch reference",
+            "description": "Branch SHA",
             "content": {
               "text/plain": {
                 "schema": {
@@ -1348,8 +1931,8 @@
       "get": {
         "tags": ["Git Protocol"],
         "summary": "Get tag ref",
-        "description": "Git dumb HTTP protocol - returns tag reference",
-        "operationId": "gitGetTagRef",
+        "description": "Dumb HTTP protocol endpoint to get a tag reference",
+        "operationId": "getTagRef",
         "security": [{ "basicAuth": [] }, {}],
         "parameters": [
           { "$ref": "#/components/parameters/owner" },
@@ -1366,7 +1949,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Tag reference",
+            "description": "Tag SHA",
             "content": {
               "text/plain": {
                 "schema": {
@@ -1395,12 +1978,12 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT",
-        "description": "JWT token authentication"
+        "description": "Bearer token authentication"
       },
       "basicAuth": {
         "type": "http",
         "scheme": "basic",
-        "description": "HTTP Basic authentication (username/password)"
+        "description": "Basic authentication with username and password"
       }
     },
     "parameters": {
@@ -1420,6 +2003,16 @@
         "description": "Repository name",
         "schema": {
           "type": "string"
+        }
+      },
+      "ref": {
+        "name": "ref",
+        "in": "path",
+        "required": true,
+        "description": "Git reference (branch name, tag name, or commit SHA)",
+        "schema": {
+          "type": "string",
+          "example": "main"
         }
       }
     },
@@ -1443,7 +2036,7 @@
             "type": "string",
             "format": "password",
             "minLength": 8,
-            "example": "secretpassword123"
+            "example": "securepassword123"
           }
         }
       },
@@ -1499,6 +2092,73 @@
           }
         }
       },
+      "AddSSHKeyRequest": {
+        "type": "object",
+        "required": ["title", "key"],
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "A descriptive name for the SSH key",
+            "example": "My Laptop"
+          },
+          "key": {
+            "type": "string",
+            "description": "The public SSH key in OpenSSH format",
+            "example": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample... user@laptop"
+          }
+        }
+      },
+      "AddSSHKeyResponse": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "$ref": "#/components/schemas/SSHKeyInfo"
+          },
+          "message": {
+            "type": "string",
+            "example": "SSH key added successfully"
+          }
+        }
+      },
+      "SSHKeyInfo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "title": {
+            "type": "string",
+            "example": "My Laptop"
+          },
+          "fingerprint": {
+            "type": "string",
+            "description": "SHA256 fingerprint of the public key",
+            "example": "SHA256:abc123def456ghi789jkl012mno345pqr678stu901v"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2024-01-15T10:30:00Z"
+          }
+        }
+      },
+      "ListSSHKeysResponse": {
+        "type": "object",
+        "properties": {
+          "keys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SSHKeyInfo"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "example": 2
+          }
+        }
+      },
       "CreateRepoRequest": {
         "type": "object",
         "required": ["name"],
@@ -1508,12 +2168,12 @@
             "minLength": 1,
             "maxLength": 100,
             "pattern": "^[a-zA-Z0-9._-]+$",
-            "example": "my-awesome-project"
+            "example": "my-project"
           },
           "description": {
             "type": "string",
             "maxLength": 500,
-            "example": "A description of my project"
+            "example": "A sample project repository"
           },
           "is_private": {
             "type": "boolean",
@@ -1546,7 +2206,7 @@
           },
           "name": {
             "type": "string",
-            "example": "my-awesome-project"
+            "example": "my-project"
           },
           "owner": {
             "type": "string",
@@ -1563,20 +2223,20 @@
           },
           "description": {
             "type": "string",
-            "example": "A description of my project"
+            "example": "A sample project repository"
           },
           "clone_url": {
             "type": "string",
             "format": "uri",
-            "example": "http://localhost:8080/johndoe/my-awesome-project.git"
+            "example": "http://localhost:8080/johndoe/my-project.git"
           },
           "ssh_url": {
             "type": "string",
-            "example": "git@localhost:johndoe/my-awesome-project.git"
+            "example": "ssh://git@localhost:2222/johndoe/my-project.git"
           },
           "git_path": {
             "type": "string",
-            "example": "/data/repos/johndoe/my-awesome-project.git"
+            "example": "/data/repos/johndoe/my-project.git"
           },
           "created_at": {
             "type": "string",
@@ -1686,7 +2346,7 @@
           },
           "message": {
             "type": "string",
-            "description": "If provided, creates an annotated tag",
+            "description": "Optional message for annotated tag",
             "example": "Release version 1.0.0"
           }
         }
@@ -1728,6 +2388,227 @@
           "total": {
             "type": "integer",
             "example": 3
+          }
+        }
+      },
+      "CommitResponse": {
+        "type": "object",
+        "properties": {
+          "hash": {
+            "type": "string",
+            "example": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0"
+          },
+          "short_hash": {
+            "type": "string",
+            "example": "a1b2c3d"
+          },
+          "message": {
+            "type": "string",
+            "example": "Add new feature"
+          },
+          "author": {
+            "type": "string",
+            "example": "John Doe"
+          },
+          "author_email": {
+            "type": "string",
+            "format": "email",
+            "example": "john@example.com"
+          },
+          "author_date": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2024-01-15T10:30:00Z"
+          },
+          "committer": {
+            "type": "string",
+            "example": "John Doe"
+          },
+          "committer_email": {
+            "type": "string",
+            "format": "email",
+            "example": "john@example.com"
+          },
+          "committer_date": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2024-01-15T10:30:00Z"
+          },
+          "parent_hashes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": ["b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1"]
+          }
+        }
+      },
+      "CommitListResponse": {
+        "type": "object",
+        "properties": {
+          "commits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommitResponse"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "example": 150
+          },
+          "ref": {
+            "type": "string",
+            "example": "main"
+          }
+        }
+      },
+      "TreeEntryResponse": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "main.go"
+          },
+          "path": {
+            "type": "string",
+            "example": "src/main.go"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["blob", "tree"],
+            "example": "blob"
+          },
+          "mode": {
+            "type": "string",
+            "example": "100644"
+          },
+          "hash": {
+            "type": "string",
+            "example": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Size in bytes (only for blob entries)",
+            "example": 1024
+          }
+        }
+      },
+      "TreeResponse": {
+        "type": "object",
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TreeEntryResponse"
+            }
+          },
+          "path": {
+            "type": "string",
+            "example": "src"
+          },
+          "ref": {
+            "type": "string",
+            "example": "main"
+          },
+          "total": {
+            "type": "integer",
+            "example": 10
+          }
+        }
+      },
+      "FileContentResponse": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "example": "src/main.go"
+          },
+          "name": {
+            "type": "string",
+            "example": "main.go"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1024
+          },
+          "hash": {
+            "type": "string",
+            "example": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0"
+          },
+          "content": {
+            "type": "string",
+            "description": "File content (base64-encoded for binary files)",
+            "example": "package main\n\nfunc main() {\n\t// ...\n}"
+          },
+          "is_binary": {
+            "type": "boolean",
+            "example": false
+          },
+          "encoding": {
+            "type": "string",
+            "enum": ["utf-8", "base64"],
+            "description": "Content encoding: utf-8 for text, base64 for binary",
+            "example": "utf-8"
+          },
+          "ref": {
+            "type": "string",
+            "example": "main"
+          }
+        }
+      },
+      "BlameLineResponse": {
+        "type": "object",
+        "properties": {
+          "line_no": {
+            "type": "integer",
+            "example": 1
+          },
+          "commit": {
+            "type": "string",
+            "example": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0"
+          },
+          "author": {
+            "type": "string",
+            "example": "John Doe"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "john@example.com"
+          },
+          "date": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2024-01-15T10:30:00Z"
+          },
+          "content": {
+            "type": "string",
+            "example": "package main"
+          }
+        }
+      },
+      "BlameResponse": {
+        "type": "object",
+        "properties": {
+          "blame": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BlameLineResponse"
+            }
+          },
+          "path": {
+            "type": "string",
+            "example": "src/main.go"
+          },
+          "ref": {
+            "type": "string",
+            "example": "main"
+          },
+          "total": {
+            "type": "integer",
+            "example": 100
           }
         }
       },

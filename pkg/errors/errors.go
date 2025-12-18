@@ -233,6 +233,15 @@ func IsConflict(err error) bool {
 		errors.Is(err, ErrTagExists)
 }
 
+// IsBadRequest checks if an error is a bad request error
+func IsBadRequest(err error) bool {
+	var appErr *AppError
+	if errors.As(err, &appErr) {
+		return appErr.Code == CodeBadRequest
+	}
+	return errors.Is(err, ErrInvalidInput) || errors.Is(err, ErrInvalidSSHKey)
+}
+
 // Wrap wraps an error with additional context
 func Wrap(err error, message string) error {
 	if err == nil {

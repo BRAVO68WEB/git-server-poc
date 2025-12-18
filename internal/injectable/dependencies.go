@@ -13,17 +13,19 @@ import (
 // Dependencies holds all the dependencies required by the router
 type Dependencies struct {
 	// Services
-	AuthService domainservice.AuthService
-	GitService  domainservice.GitService
-	RepoService *service.RepoService
-	UserService *service.UserService
-	Storage     domainservice.StorageService
+	AuthService   domainservice.AuthService
+	GitService    domainservice.GitService
+	RepoService   *service.RepoService
+	UserService   *service.UserService
+	SSHKeyService *service.SSHKeyService
+	Storage       domainservice.StorageService
 }
 
 func LoadDependencies(cfg *config.Config, db *database.Database) Dependencies {
 	// Initialize repositories
 	userRepo := repository.NewUserRepository(db.DB())
 	repoRepo := repository.NewRepoRepository(db.DB())
+	sshKeyRepo := repository.NewSSHKeyRepository(db.DB())
 
 	// Initialize storage
 	storageFactory := storage.NewFactory(&cfg.Storage)
@@ -33,7 +35,7 @@ func LoadDependencies(cfg *config.Config, db *database.Database) Dependencies {
 	}
 
 	// Initialize services
-	authService := service.NewAuthService(userRepo)
+	authService := service.NewAuthService(userRepo, sshKeyRepo)
 	gitService := git.NewGitOperations(storageService)
 	repoService := service.NewRepoService(
 		repoRepo,
@@ -42,12 +44,14 @@ func LoadDependencies(cfg *config.Config, db *database.Database) Dependencies {
 		storageService,
 	)
 	userService := service.NewUserService(userRepo, authService)
+	sshKeyService := service.NewSSHKeyService(sshKeyRepo, userRepo)
 
 	return Dependencies{
-		AuthService: authService,
-		GitService:  gitService,
-		RepoService: repoService,
-		UserService: userService,
-		Storage:     storageService,
+		AuthService:   authService,
+		GitService:    gitService,
+		RepoService:   repoService,
+		UserService:   userService,
+		SSHKeyService: sshKeyService,
+		Storage:       storageService,
 	}
 }

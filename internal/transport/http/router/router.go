@@ -32,4 +32,5 @@ func (r *Router) RegisterRoutes() {
 	r.authRouter()
 	r.repoRouter()
 	r.gitRouter()
+	r.sshKeyRouter()
 }
