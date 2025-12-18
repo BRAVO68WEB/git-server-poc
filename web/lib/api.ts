@@ -26,6 +26,10 @@ import {
   CommitListResponse,
   TreeResponse,
   FileContentResponse,
+  SSHKeyInfo,
+  AddSSHKeyRequest,
+  AddSSHKeyResponse,
+  ListSSHKeysResponse,
 } from "./types";
 
 const API_URL =
@@ -63,7 +67,12 @@ async function apiRequest<T>(
   };
 
   if (token) {
-    (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
+    // Check if token looks like a Basic auth token (base64 encoded username:password)
+    // Basic auth tokens are typically shorter and don't contain dots like JWTs
+    const isBasicAuth = !token.includes(".") && token.length < 200;
+    const authType = isBasicAuth ? "Basic" : "Bearer";
+    (headers as Record<string, string>)["Authorization"] =
+      `${authType} ${token}`;
   }
 
   const res = await fetch(`${API_URL}${endpoint}`, {
@@ -128,6 +137,76 @@ export function isAuthenticated(): boolean {
 
 export function storeAuthToken(token: string): void {
   setToken(token);
+}
+
+export interface LoginRequest {
+  username: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  user: UserInfo;
+  token: string;
+}
+
+export async function login(data: LoginRequest): Promise<LoginResponse> {
+  // Create Basic Auth token
+  const basicToken = btoa(`${data.username}:${data.password}`);
+
+  // Try to authenticate by calling /api/v1/auth/me with Basic Auth
+  const res = await fetch(`${API_URL}/api/v1/auth/me`, {
+    headers: {
+      Authorization: `Basic ${basicToken}`,
+      "Content-Type": "application/json",
+    },
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({
+      error: "auth_failed",
+      message: "Invalid username or password",
+    }));
+    throw new Error(errorData.message || "Authentication failed");
+  }
+
+  const user: UserInfo = await res.json();
+
+  // Store the Basic Auth token for subsequent requests
+  // The token is the base64-encoded credentials
+  setToken(basicToken);
+
+  return {
+    user,
+    token: basicToken,
+  };
+}
+
+// ============================================================================
+// SSH Key API
+// ============================================================================
+
+export async function listSSHKeys(): Promise<ListSSHKeysResponse> {
+  return apiRequest("/api/v1/ssh-keys");
+}
+
+export async function addSSHKey(
+  data: AddSSHKeyRequest,
+): Promise<AddSSHKeyResponse> {
+  return apiRequest("/api/v1/ssh-keys", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getSSHKey(id: string): Promise<SSHKeyInfo> {
+  return apiRequest(`/api/v1/ssh-keys/${encodeURIComponent(id)}`);
+}
+
+export async function deleteSSHKey(id: string): Promise<SuccessResponse> {
+  return apiRequest(`/api/v1/ssh-keys/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
 }
 
 // ============================================================================

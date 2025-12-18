@@ -202,3 +202,28 @@ export interface AuthState {
   user: UserInfo | null;
   isAuthenticated: boolean;
 }
+
+// SSH Key types
+export interface SSHKeyInfo {
+  id: string;
+  title: string;
+  fingerprint: string;
+  key_type?: string;
+  last_used_at?: string;
+  created_at: string;
+}
+
+export interface AddSSHKeyRequest {
+  title: string;
+  key: string;
+}
+
+export interface AddSSHKeyResponse {
+  key: SSHKeyInfo;
+  message: string;
+}
+
+export interface ListSSHKeysResponse {
+  keys: SSHKeyInfo[];
+  total: number;
+}
