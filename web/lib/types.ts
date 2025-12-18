@@ -125,14 +125,45 @@ export interface FileEntry {
   type: string;
   hash: string;
   name: string;
+  path: string;
   size?: number;
 }
 
 export interface Commit {
   hash: string;
+  short_hash: string;
   author: string;
-  date: string;
+  author_email: string;
+  author_date: string;
+  committer: string;
+  committer_email: string;
+  committer_date: string;
   message: string;
+  parent_hashes: string[];
+}
+
+export interface CommitListResponse {
+  commits: Commit[];
+  total: number;
+  ref: string;
+}
+
+export interface TreeResponse {
+  entries: FileEntry[];
+  path: string;
+  ref: string;
+  total: number;
+}
+
+export interface FileContentResponse {
+  path: string;
+  name: string;
+  size: number;
+  hash: string;
+  content: string;
+  is_binary: boolean;
+  encoding: string;
+  ref: string;
 }
 
 export interface Branch {

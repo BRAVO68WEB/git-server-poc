@@ -1,9 +1,11 @@
 package dto
 
 import (
+	"encoding/base64"
 	"time"
 
 	"github.com/bravo68web/githut/internal/domain/models"
+	"github.com/bravo68web/githut/internal/domain/service"
 	"github.com/google/uuid"
 )
 
@@ -83,6 +85,131 @@ type TagResponse struct {
 type TagListResponse struct {
 	Tags  []TagResponse `json:"tags"`
 	Total int           `json:"total"`
+}
+
+// CommitResponse represents a commit in API responses
+type CommitResponse struct {
+	Hash           string    `json:"hash"`
+	ShortHash      string    `json:"short_hash"`
+	Message        string    `json:"message"`
+	Author         string    `json:"author"`
+	AuthorEmail    string    `json:"author_email"`
+	AuthorDate     time.Time `json:"author_date"`
+	Committer      string    `json:"committer"`
+	CommitterEmail string    `json:"committer_email"`
+	CommitterDate  time.Time `json:"committer_date"`
+	ParentHashes   []string  `json:"parent_hashes"`
+}
+
+// CommitListResponse represents a list of commits
+type CommitListResponse struct {
+	Commits []CommitResponse `json:"commits"`
+	Total   int              `json:"total"`
+	Ref     string           `json:"ref"`
+}
+
+// TreeEntryResponse represents a tree entry (file or directory) in API responses
+type TreeEntryResponse struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+	Type string `json:"type"` // "blob" for file, "tree" for directory
+	Mode string `json:"mode"`
+	Hash string `json:"hash"`
+	Size int64  `json:"size,omitempty"` // Only for blobs
+}
+
+// TreeResponse represents a tree listing in API responses
+type TreeResponse struct {
+	Entries []TreeEntryResponse `json:"entries"`
+	Path    string              `json:"path"`
+	Ref     string              `json:"ref"`
+	Total   int                 `json:"total"`
+}
+
+// FileContentResponse represents file content in API responses
+type FileContentResponse struct {
+	Path     string `json:"path"`
+	Name     string `json:"name"`
+	Size     int64  `json:"size"`
+	Hash     string `json:"hash"`
+	Content  string `json:"content"`
+	IsBinary bool   `json:"is_binary"`
+	Encoding string `json:"encoding"` // "utf-8" or "base64"
+	Ref      string `json:"ref"`
+}
+
+// CommitFromService converts a service.Commit to CommitResponse DTO
+func CommitFromService(c service.Commit) CommitResponse {
+	return CommitResponse{
+		Hash:           c.Hash,
+		ShortHash:      c.ShortHash,
+		Message:        c.Message,
+		Author:         c.Author,
+		AuthorEmail:    c.AuthorEmail,
+		AuthorDate:     c.AuthorDate,
+		Committer:      c.Committer,
+		CommitterEmail: c.CommitterEmail,
+		CommitterDate:  c.CommitterDate,
+		ParentHashes:   c.ParentHashes,
+	}
+}
+
+// CommitListFromService converts a slice of service.Commit to CommitListResponse
+func CommitListFromService(commits []service.Commit, ref string) CommitListResponse {
+	responses := make([]CommitResponse, len(commits))
+	for i, c := range commits {
+		responses[i] = CommitFromService(c)
+	}
+	return CommitListResponse{
+		Commits: responses,
+		Total:   len(responses),
+		Ref:     ref,
+	}
+}
+
+// TreeEntryFromService converts a service.TreeEntry to TreeEntryResponse DTO
+func TreeEntryFromService(e service.TreeEntry) TreeEntryResponse {
+	return TreeEntryResponse{
+		Name: e.Name,
+		Path: e.Path,
+		Type: e.Type,
+		Mode: e.Mode,
+		Hash: e.Hash,
+		Size: e.Size,
+	}
+}
+
+// TreeFromService converts a slice of service.TreeEntry to TreeResponse
+func TreeFromService(entries []service.TreeEntry, path, ref string) TreeResponse {
+	responses := make([]TreeEntryResponse, len(entries))
+	for i, e := range entries {
+		responses[i] = TreeEntryFromService(e)
+	}
+	return TreeResponse{
+		Entries: responses,
+		Path:    path,
+		Ref:     ref,
+		Total:   len(responses),
+	}
+}
+
+// FileContentFromService converts a service.FileContent to FileContentResponse DTO
+func FileContentFromService(f *service.FileContent, ref string) FileContentResponse {
+	content := string(f.Content)
+	if f.IsBinary {
+		content = base64.StdEncoding.EncodeToString(f.Content)
+	}
+
+	return FileContentResponse{
+		Path:     f.Path,
+		Name:     f.Name,
+		Size:     f.Size,
+		Hash:     f.Hash,
+		Content:  content,
+		IsBinary: f.IsBinary,
+		Encoding: f.Encoding,
+		Ref:      ref,
+	}
 }
 
 // RepoFromModel converts a Repository model to RepoResponse DTO

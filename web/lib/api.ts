@@ -23,6 +23,9 @@ import {
   Branch,
   Diff,
   BlameLine,
+  CommitListResponse,
+  TreeResponse,
+  FileContentResponse,
 } from "./types";
 
 const API_URL =
@@ -314,32 +317,117 @@ export async function getTree(
   name: string,
   urlPath: string,
 ): Promise<{ ref: string; path: string; entries: FileEntry[] }> {
-  const url = `${API_URL}/api/repos/${owner}/${name}/tree/${urlPath}`;
-  const res = await fetch(url, { cache: "no-store" });
+  // Parse urlPath to extract ref and path
+  // urlPath format: "ref/path/to/dir" or just "ref"
+  const parts = urlPath.split("/");
+  const ref = parts[0] || "HEAD";
+  const path = parts.slice(1).join("/");
+
+  const token =
+    typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+  };
+  if (token) {
+    (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
+  }
+
+  let url = `${API_URL}/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/tree/${encodeURIComponent(ref)}`;
+  if (path) {
+    url += `/${path.split("/").map(encodeURIComponent).join("/")}`;
+  }
+
+  const res = await fetch(url, { cache: "no-store", headers });
   if (!res.ok) throw new Error("Failed to fetch tree");
-  return res.json();
+
+  const data: TreeResponse = await res.json();
+  return {
+    ref: data.ref,
+    path: data.path,
+    entries: data.entries,
+  };
 }
 
 export async function getBlob(
   owner: string,
   name: string,
   urlPath: string,
-): Promise<{ ref: string; path: string; content: string }> {
-  const url = `${API_URL}/api/repos/${owner}/${name}/blob/${urlPath}`;
-  const res = await fetch(url, { cache: "no-store" });
+): Promise<{
+  ref: string;
+  path: string;
+  content: string;
+  is_binary?: boolean;
+  encoding?: string;
+}> {
+  // Parse urlPath to extract ref and path
+  // urlPath format: "ref/path/to/file"
+  const parts = urlPath.split("/");
+  const ref = parts[0] || "HEAD";
+  const path = parts.slice(1).join("/");
+
+  const token =
+    typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+  };
+  if (token) {
+    (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
+  }
+
+  const url = `${API_URL}/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/blob/${encodeURIComponent(ref)}/${path.split("/").map(encodeURIComponent).join("/")}`;
+
+  const res = await fetch(url, { cache: "no-store", headers });
   if (!res.ok) throw new Error("Failed to fetch blob");
-  return res.json();
+
+  const data: FileContentResponse = await res.json();
+  return {
+    ref: data.ref,
+    path: data.path,
+    content: data.content,
+    is_binary: data.is_binary,
+    encoding: data.encoding,
+  };
 }
 
 export async function getCommits(
   owner: string,
   name: string,
   urlPath: string,
+  page: number = 1,
+  perPage: number = 30,
 ): Promise<{ ref: string; path: string; commits: Commit[] }> {
-  const url = `${API_URL}/api/repos/${owner}/${name}/commits/${urlPath}`;
-  const res = await fetch(url, { cache: "no-store" });
+  // Parse urlPath to extract ref (and optionally path for file history)
+  // urlPath format: "ref" or "ref/path/to/file"
+  const parts = urlPath.split("/");
+  const ref = parts[0] || "HEAD";
+  const path = parts.slice(1).join("/");
+
+  const token =
+    typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+  };
+  if (token) {
+    (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
+  }
+
+  const params = new URLSearchParams({
+    ref: ref,
+    page: page.toString(),
+    per_page: perPage.toString(),
+  });
+
+  const url = `${API_URL}/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/commits?${params}`;
+
+  const res = await fetch(url, { cache: "no-store", headers });
   if (!res.ok) throw new Error("Failed to fetch commits");
-  return res.json();
+
+  const data: CommitListResponse = await res.json();
+  return {
+    ref: data.ref,
+    path: path,
+    commits: data.commits,
+  };
 }
 
 export async function getBranches(

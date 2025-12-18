@@ -5,16 +5,19 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/bravo68web/githut/internal/domain/service"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/filemode"
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
@@ -595,6 +598,319 @@ func GetObjectPath(repoPath, objectHash string) string {
 // GetPackPath returns the pack directory path
 func GetPackPath(repoPath string) string {
 	return filepath.Join(repoPath, "objects", "pack")
+}
+
+// GetCommits returns a list of commits for a given ref
+func (g *GitOperations) GetCommits(ctx context.Context, repoPath, ref string, limit, offset int) ([]service.Commit, error) {
+	repo, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open repository: %w", err)
+	}
+
+	// Resolve the ref to a commit hash
+	hash, err := g.resolveRef(repo, ref)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve ref '%s': %w", ref, err)
+	}
+
+	// Get the commit iterator starting from the resolved hash
+	commitIter, err := repo.Log(&git.LogOptions{
+		From:  hash,
+		Order: git.LogOrderCommitterTime,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get commit log: %w", err)
+	}
+	defer commitIter.Close()
+
+	commits := []service.Commit{}
+	count := 0
+	skipped := 0
+
+	err = commitIter.ForEach(func(c *object.Commit) error {
+		// Skip commits until we reach the offset
+		if skipped < offset {
+			skipped++
+			return nil
+		}
+
+		// Stop if we've reached the limit
+		if limit > 0 && count >= limit {
+			return fmt.Errorf("limit reached")
+		}
+
+		parentHashes := make([]string, len(c.ParentHashes))
+		for i, ph := range c.ParentHashes {
+			parentHashes[i] = ph.String()
+		}
+
+		commits = append(commits, service.Commit{
+			Hash:           c.Hash.String(),
+			ShortHash:      c.Hash.String()[:7],
+			Message:        c.Message,
+			Author:         c.Author.Name,
+			AuthorEmail:    c.Author.Email,
+			AuthorDate:     c.Author.When,
+			Committer:      c.Committer.Name,
+			CommitterEmail: c.Committer.Email,
+			CommitterDate:  c.Committer.When,
+			ParentHashes:   parentHashes,
+		})
+
+		count++
+		return nil
+	})
+
+	// Ignore "limit reached" error
+	if err != nil && err.Error() != "limit reached" {
+		return nil, fmt.Errorf("failed to iterate commits: %w", err)
+	}
+
+	return commits, nil
+}
+
+// GetCommit returns a single commit by hash
+func (g *GitOperations) GetCommit(ctx context.Context, repoPath, commitHash string) (*service.Commit, error) {
+	repo, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open repository: %w", err)
+	}
+
+	hash := plumbing.NewHash(commitHash)
+	c, err := repo.CommitObject(hash)
+	if err != nil {
+		if err == plumbing.ErrObjectNotFound {
+			return nil, fmt.Errorf("commit not found: %s", commitHash)
+		}
+		return nil, fmt.Errorf("failed to get commit: %w", err)
+	}
+
+	parentHashes := make([]string, len(c.ParentHashes))
+	for i, ph := range c.ParentHashes {
+		parentHashes[i] = ph.String()
+	}
+
+	return &service.Commit{
+		Hash:           c.Hash.String(),
+		ShortHash:      c.Hash.String()[:7],
+		Message:        c.Message,
+		Author:         c.Author.Name,
+		AuthorEmail:    c.Author.Email,
+		AuthorDate:     c.Author.When,
+		Committer:      c.Committer.Name,
+		CommitterEmail: c.Committer.Email,
+		CommitterDate:  c.Committer.When,
+		ParentHashes:   parentHashes,
+	}, nil
+}
+
+// GetTree returns the tree entries for a given ref and path
+func (g *GitOperations) GetTree(ctx context.Context, repoPath, ref, path string) ([]service.TreeEntry, error) {
+	repo, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open repository: %w", err)
+	}
+
+	// Resolve the ref to a commit hash
+	hash, err := g.resolveRef(repo, ref)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve ref '%s': %w", ref, err)
+	}
+
+	// Get the commit
+	commit, err := repo.CommitObject(hash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get commit: %w", err)
+	}
+
+	// Get the tree
+	tree, err := commit.Tree()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tree: %w", err)
+	}
+
+	// If path is specified, navigate to that subtree
+	if path != "" && path != "/" {
+		path = strings.TrimPrefix(path, "/")
+		path = strings.TrimSuffix(path, "/")
+		tree, err = tree.Tree(path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get subtree at path '%s': %w", path, err)
+		}
+	}
+
+	entries := []service.TreeEntry{}
+	for _, entry := range tree.Entries {
+		entryPath := entry.Name
+		if path != "" && path != "/" {
+			entryPath = path + "/" + entry.Name
+		}
+
+		entryType := "blob"
+		if entry.Mode == filemode.Dir {
+			entryType = "tree"
+		} else if entry.Mode == filemode.Submodule {
+			entryType = "commit"
+		}
+
+		var size int64 = 0
+		if entryType == "blob" {
+			// Get the blob to retrieve size
+			blob, err := repo.BlobObject(entry.Hash)
+			if err == nil {
+				size = blob.Size
+			}
+		}
+
+		entries = append(entries, service.TreeEntry{
+			Name: entry.Name,
+			Path: entryPath,
+			Type: entryType,
+			Mode: entry.Mode.String(),
+			Hash: entry.Hash.String(),
+			Size: size,
+		})
+	}
+
+	return entries, nil
+}
+
+// GetFileContent returns the content of a file at a given ref and path
+func (g *GitOperations) GetFileContent(ctx context.Context, repoPath, ref, filePath string) (*service.FileContent, error) {
+	repo, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open repository: %w", err)
+	}
+
+	// Resolve the ref to a commit hash
+	hash, err := g.resolveRef(repo, ref)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve ref '%s': %w", ref, err)
+	}
+
+	// Get the commit
+	commit, err := repo.CommitObject(hash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get commit: %w", err)
+	}
+
+	// Get the file from the tree
+	filePath = strings.TrimPrefix(filePath, "/")
+	file, err := commit.File(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get file '%s': %w", filePath, err)
+	}
+
+	// Read the content
+	reader, err := file.Reader()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file: %w", err)
+	}
+	defer reader.Close()
+
+	content, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file content: %w", err)
+	}
+
+	// Check if the file is binary
+	isBinary := isBinaryContent(content)
+	encoding := "utf-8"
+	if isBinary {
+		encoding = "base64"
+	}
+
+	// Extract the file name from the path
+	name := filepath.Base(filePath)
+
+	return &service.FileContent{
+		Path:     filePath,
+		Name:     name,
+		Size:     file.Size,
+		Hash:     file.Hash.String(),
+		Content:  content,
+		IsBinary: isBinary,
+		Encoding: encoding,
+	}, nil
+}
+
+// resolveRef resolves a ref string to a commit hash
+// It handles branch names, tag names, and commit hashes
+func (g *GitOperations) resolveRef(repo *git.Repository, ref string) (plumbing.Hash, error) {
+	// If ref is empty, use HEAD
+	if ref == "" {
+		head, err := repo.Head()
+		if err != nil {
+			return plumbing.ZeroHash, fmt.Errorf("failed to get HEAD: %w", err)
+		}
+		return head.Hash(), nil
+	}
+
+	// Try as a commit hash first (if it looks like one)
+	if len(ref) >= 7 && len(ref) <= 40 {
+		hash := plumbing.NewHash(ref)
+		if _, err := repo.CommitObject(hash); err == nil {
+			return hash, nil
+		}
+	}
+
+	// Try as a branch name
+	branchRef := plumbing.NewBranchReferenceName(ref)
+	if r, err := repo.Reference(branchRef, true); err == nil {
+		return r.Hash(), nil
+	}
+
+	// Try as a tag name
+	tagRef := plumbing.NewTagReferenceName(ref)
+	if r, err := repo.Reference(tagRef, true); err == nil {
+		// For annotated tags, we need to get the target commit
+		tagObj, err := repo.TagObject(r.Hash())
+		if err == nil {
+			// Annotated tag - get the commit it points to
+			commit, err := tagObj.Commit()
+			if err == nil {
+				return commit.Hash, nil
+			}
+		}
+		// Lightweight tag or failed to get annotated tag target
+		return r.Hash(), nil
+	}
+
+	// Try as a full reference name
+	if r, err := repo.Reference(plumbing.ReferenceName(ref), true); err == nil {
+		return r.Hash(), nil
+	}
+
+	return plumbing.ZeroHash, fmt.Errorf("unable to resolve ref: %s", ref)
+}
+
+// isBinaryContent checks if the content appears to be binary
+func isBinaryContent(content []byte) bool {
+	// Check for null bytes (common in binary files)
+	if bytes.Contains(content[:min(len(content), 8000)], []byte{0}) {
+		return true
+	}
+
+	// Use http.DetectContentType to check MIME type
+	contentType := http.DetectContentType(content)
+	if strings.HasPrefix(contentType, "text/") || contentType == "application/json" || contentType == "application/xml" {
+		return false
+	}
+
+	// Check if content is valid UTF-8
+	if !utf8.Valid(content) {
+		return true
+	}
+
+	return false
+}
+
+// min returns the smaller of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // Verify interface compliance at compile time

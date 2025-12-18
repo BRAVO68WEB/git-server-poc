@@ -566,6 +566,165 @@ func (h *RepoHandler) GetRepositoryStats(c *gin.Context) {
 	c.JSON(http.StatusOK, stats)
 }
 
+// ListCommits handles GET /api/repos/:owner/:repo/commits
+func (h *RepoHandler) ListCommits(c *gin.Context) {
+	owner := c.Param("owner")
+	repoName := c.Param("repo")
+
+	repo, err := h.repoService.GetRepository(c.Request.Context(), owner, repoName)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+
+	// Check access
+	user := middleware.GetUserFromContext(c)
+	if repo.IsPrivate && (user == nil || (user.ID != repo.OwnerID && !user.IsAdmin)) {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":   "not_found",
+			"message": "Repository not found",
+		})
+		return
+	}
+
+	// Get query parameters
+	ref := c.DefaultQuery("ref", "")
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "30"))
+
+	if page < 1 {
+		page = 1
+	}
+	if perPage < 1 || perPage > 100 {
+		perPage = 30
+	}
+
+	offset := (page - 1) * perPage
+
+	commits, err := h.repoService.GetCommits(c.Request.Context(), repo, ref, perPage, offset)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+
+	response := dto.CommitListFromService(commits, ref)
+	response.Ref = ref
+	if ref == "" {
+		response.Ref = "HEAD"
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// GetCommit handles GET /api/repos/:owner/:repo/commits/:sha
+func (h *RepoHandler) GetCommit(c *gin.Context) {
+	owner := c.Param("owner")
+	repoName := c.Param("repo")
+	sha := c.Param("sha")
+
+	repo, err := h.repoService.GetRepository(c.Request.Context(), owner, repoName)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+
+	// Check access
+	user := middleware.GetUserFromContext(c)
+	if repo.IsPrivate && (user == nil || (user.ID != repo.OwnerID && !user.IsAdmin)) {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":   "not_found",
+			"message": "Repository not found",
+		})
+		return
+	}
+
+	commit, err := h.repoService.GetCommit(c.Request.Context(), repo, sha)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":   "not_found",
+			"message": "Commit not found",
+		})
+		return
+	}
+
+	response := dto.CommitFromService(*commit)
+	c.JSON(http.StatusOK, response)
+}
+
+// GetTree handles GET /api/repos/:owner/:repo/tree/:ref/*path
+func (h *RepoHandler) GetTree(c *gin.Context) {
+	owner := c.Param("owner")
+	repoName := c.Param("repo")
+	ref := c.Param("ref")
+	path := c.Param("path")
+
+	repo, err := h.repoService.GetRepository(c.Request.Context(), owner, repoName)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+
+	// Check access
+	user := middleware.GetUserFromContext(c)
+	if repo.IsPrivate && (user == nil || (user.ID != repo.OwnerID && !user.IsAdmin)) {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":   "not_found",
+			"message": "Repository not found",
+		})
+		return
+	}
+
+	entries, err := h.repoService.GetTree(c.Request.Context(), repo, ref, path)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":   "not_found",
+			"message": "Tree not found",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	response := dto.TreeFromService(entries, path, ref)
+	c.JSON(http.StatusOK, response)
+}
+
+// GetFileContent handles GET /api/repos/:owner/:repo/blob/:ref/*path
+func (h *RepoHandler) GetFileContent(c *gin.Context) {
+	owner := c.Param("owner")
+	repoName := c.Param("repo")
+	ref := c.Param("ref")
+	path := c.Param("path")
+
+	repo, err := h.repoService.GetRepository(c.Request.Context(), owner, repoName)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+
+	// Check access
+	user := middleware.GetUserFromContext(c)
+	if repo.IsPrivate && (user == nil || (user.ID != repo.OwnerID && !user.IsAdmin)) {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":   "not_found",
+			"message": "Repository not found",
+		})
+		return
+	}
+
+	fileContent, err := h.repoService.GetFileContent(c.Request.Context(), repo, ref, path)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":   "not_found",
+			"message": "File not found",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	response := dto.FileContentFromService(fileContent, ref)
+	c.JSON(http.StatusOK, response)
+}
+
 // handleError handles errors and returns appropriate HTTP responses
 func (h *RepoHandler) handleError(c *gin.Context, err error) {
 	if apperrors.IsNotFound(err) {

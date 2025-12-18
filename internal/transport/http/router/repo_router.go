@@ -46,6 +46,17 @@ func (r *Router) repoRouter() {
 			repoRoutes.GET("/tags", authMiddleware.Authenticate(), h.ListTags)
 			repoRoutes.POST("/tags", authMiddleware.RequireAuth(), h.CreateTag)
 			repoRoutes.DELETE("/tags/:tag", authMiddleware.RequireAuth(), h.DeleteTag)
+
+			// Commit routes
+			repoRoutes.GET("/commits", authMiddleware.Authenticate(), h.ListCommits)
+			repoRoutes.GET("/commits/:sha", authMiddleware.Authenticate(), h.GetCommit)
+
+			// Tree/code structure routes
+			repoRoutes.GET("/tree/:ref", authMiddleware.Authenticate(), h.GetTree)
+			repoRoutes.GET("/tree/:ref/*path", authMiddleware.Authenticate(), h.GetTree)
+
+			// File content routes
+			repoRoutes.GET("/blob/:ref/*path", authMiddleware.Authenticate(), h.GetFileContent)
 		}
 	}
 }

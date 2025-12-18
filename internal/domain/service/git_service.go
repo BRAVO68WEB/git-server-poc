@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"io"
+	"time"
 )
 
 // Ref represents a Git reference (branch or tag)
@@ -26,6 +27,41 @@ type Branch struct {
 	Name   string
 	Hash   string
 	IsHead bool // True if this is the current HEAD
+}
+
+// Commit represents a Git commit
+type Commit struct {
+	Hash           string
+	ShortHash      string
+	Message        string
+	Author         string
+	AuthorEmail    string
+	AuthorDate     time.Time
+	Committer      string
+	CommitterEmail string
+	CommitterDate  time.Time
+	ParentHashes   []string
+}
+
+// TreeEntry represents an entry in a Git tree (file or directory)
+type TreeEntry struct {
+	Name string // File or directory name
+	Path string // Full path from repository root
+	Type string // "blob" for file, "tree" for directory
+	Mode string // File mode (e.g., "100644" for regular file, "040000" for directory)
+	Hash string // Object hash
+	Size int64  // File size in bytes (only for blobs)
+}
+
+// FileContent represents the content of a file in a Git repository
+type FileContent struct {
+	Path     string
+	Name     string
+	Size     int64
+	Hash     string
+	Content  []byte
+	IsBinary bool
+	Encoding string // "utf-8", "base64" for binary files
 }
 
 // GitService defines the interface for Git repository operations
@@ -102,4 +138,21 @@ type GitService interface {
 
 	// GetDefaultBranch returns the default branch name for the repository
 	GetDefaultBranch(ctx context.Context, repoPath string) (string, error)
+
+	// Commit operations
+	// GetCommits returns a list of commits for a given ref (branch/tag/commit hash)
+	// If ref is empty, uses the default branch
+	GetCommits(ctx context.Context, repoPath, ref string, limit, offset int) ([]Commit, error)
+
+	// GetCommit returns a single commit by hash
+	GetCommit(ctx context.Context, repoPath, commitHash string) (*Commit, error)
+
+	// Tree operations
+	// GetTree returns the tree entries for a given ref and path
+	// If path is empty, returns the root tree
+	GetTree(ctx context.Context, repoPath, ref, path string) ([]TreeEntry, error)
+
+	// File operations
+	// GetFileContent returns the content of a file at a given ref and path
+	GetFileContent(ctx context.Context, repoPath, ref, filePath string) (*FileContent, error)
 }

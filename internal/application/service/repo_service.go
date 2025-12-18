@@ -322,6 +322,36 @@ func (s *RepoService) TransferRepository(ctx context.Context, repoID, newOwnerID
 	return repo, nil
 }
 
+// GetCommits returns a list of commits for a repository
+func (s *RepoService) GetCommits(ctx context.Context, repo *models.Repository, ref string, limit, offset int) ([]service.Commit, error) {
+	if limit <= 0 {
+		limit = 30
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	return s.gitService.GetCommits(ctx, repo.GitPath, ref, limit, offset)
+}
+
+// GetCommit returns a single commit by hash
+func (s *RepoService) GetCommit(ctx context.Context, repo *models.Repository, commitHash string) (*service.Commit, error) {
+	return s.gitService.GetCommit(ctx, repo.GitPath, commitHash)
+}
+
+// GetTree returns the tree entries for a repository at a given ref and path
+func (s *RepoService) GetTree(ctx context.Context, repo *models.Repository, ref, path string) ([]service.TreeEntry, error) {
+	return s.gitService.GetTree(ctx, repo.GitPath, ref, path)
+}
+
+// GetFileContent returns the content of a file in a repository
+func (s *RepoService) GetFileContent(ctx context.Context, repo *models.Repository, ref, filePath string) (*service.FileContent, error) {
+	return s.gitService.GetFileContent(ctx, repo.GitPath, ref, filePath)
+}
+
 // ForkRepository creates a fork of a repository
 func (s *RepoService) ForkRepository(ctx context.Context, sourceRepoID, newOwnerID uuid.UUID, newName string) (*models.Repository, error) {
 	// Get source repository
