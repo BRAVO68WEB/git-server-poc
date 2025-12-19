@@ -6,10 +6,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"github.com/bravo68web/githut/internal/application/dto"
-	"github.com/bravo68web/githut/internal/application/service"
-	"github.com/bravo68web/githut/internal/transport/http/middleware"
-	apperrors "github.com/bravo68web/githut/pkg/errors"
+	"github.com/bravo68web/stasis/internal/application/dto"
+	"github.com/bravo68web/stasis/internal/application/service"
+	"github.com/bravo68web/stasis/internal/transport/http/middleware"
+	apperrors "github.com/bravo68web/stasis/pkg/errors"
 )
 
 // SSHKeyHandler handles SSH key-related HTTP requests

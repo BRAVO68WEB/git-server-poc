@@ -2,7 +2,7 @@ package router
 
 import (
 	"github.com/PeterTakahashi/gin-openapi/openapiui"
-	"github.com/bravo68web/githut/docs"
+	"github.com/bravo68web/stasis/docs"
 )
 
 func (r *Router) docsRouter() {

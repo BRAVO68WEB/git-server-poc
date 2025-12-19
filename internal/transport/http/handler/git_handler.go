@@ -7,11 +7,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/bravo68web/githut/internal/application/service"
-	"github.com/bravo68web/githut/internal/domain/models"
-	domainservice "github.com/bravo68web/githut/internal/domain/service"
-	"github.com/bravo68web/githut/internal/infrastructure/git"
-	"github.com/bravo68web/githut/internal/transport/http/middleware"
+	"github.com/bravo68web/stasis/internal/application/service"
+	"github.com/bravo68web/stasis/internal/domain/models"
+	domainservice "github.com/bravo68web/stasis/internal/domain/service"
+	"github.com/bravo68web/stasis/internal/infrastructure/git"
+	"github.com/bravo68web/stasis/internal/transport/http/middleware"
 	"github.com/gin-gonic/gin"
 )
 

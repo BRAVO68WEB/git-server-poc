@@ -1,4 +1,4 @@
-module github.com/bravo68web/githut
+module github.com/bravo68web/stasis
 
 go 1.25.3
 

@@ -7,8 +7,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/bravo68web/githut/internal/domain/models"
-	"github.com/bravo68web/githut/internal/domain/service"
+	"github.com/bravo68web/stasis/internal/domain/models"
+	"github.com/bravo68web/stasis/internal/domain/service"
 )
 
 // ContextKey is a type for context keys

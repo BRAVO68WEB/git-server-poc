@@ -9,8 +9,8 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	"github.com/bravo68web/githut/internal/config"
-	"github.com/bravo68web/githut/internal/domain/models"
+	"github.com/bravo68web/stasis/internal/config"
+	"github.com/bravo68web/stasis/internal/domain/models"
 )
 
 // Database wraps the GORM database connection
