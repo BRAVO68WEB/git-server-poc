@@ -20,7 +20,6 @@ web:
 .PHONY: dev
 dev:
 	@echo "Running in development environment..."
-# 	@make -j2 watch dev
 	@make -j2 watch-server watch-cli
 
 ## update: updates the packages and tidy the modfile
@@ -40,13 +39,13 @@ tidy:
 .PHONY: build-cli
 build-cli:
 	@echo "Building CLI..."
-	@go build -o bin/$(CLI_BINARY_NAME) $(CLI_MAIN_PKG)
+	@CONFIG_PATH=configs/config.yaml go build -o bin/$(CLI_BINARY_NAME) $(CLI_MAIN_PKG)
 
 ## build-server: build server for production
 .PHONY: build-server
 build-server:
 	@echo "Building server..."
-	@go build -o bin/$(SERVER_BINARY_NAME) $(SERVER_MAIN_PKG)
+	@CONFIG_PATH=configs/config.yaml go build -o bin/$(SERVER_BINARY_NAME) $(SERVER_MAIN_PKG)
 
 
 ## watch-server: run the server application with reloading on file changes

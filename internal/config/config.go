@@ -1,19 +1,12 @@
 package config
 
 import (
-	"bytes"
-	"embed"
 	"fmt"
-	"io/fs"
 	"os"
 	"strings"
 
 	"github.com/spf13/viper"
 )
-
-// EmbeddedFS can be set to use embedded configuration files
-// This should be set from the configs package if embedding is desired
-var EmbeddedFS embed.FS
 
 // Config represents the complete application configuration
 type Config struct {
@@ -114,9 +107,8 @@ type LoggingConfig struct {
 // Load reads configuration from file and environment variables
 // It supports loading from:
 // 1. Explicit file path (if provided and exists on filesystem)
-// 2. Embedded filesystem (if EmbeddedFS is set)
-// 3. Common filesystem locations
-// 4. Environment variables (always applied as overrides)
+// 2. Common filesystem locations
+// 3. Environment variables (always applied as overrides)
 func Load(configPath string) (*Config, error) {
 	v := viper.New()
 
@@ -145,18 +137,7 @@ func Load(configPath string) (*Config, error) {
 		}
 	}
 
-	// 2. Try embedded filesystem if config not loaded and EmbeddedFS is set
-	if !configLoaded {
-		embeddedConfig, err := tryLoadEmbeddedConfig(configPath)
-		if err == nil && embeddedConfig != nil {
-			if err := v.ReadConfig(bytes.NewReader(embeddedConfig)); err != nil {
-				return nil, fmt.Errorf("failed to read embedded config: %w", err)
-			}
-			configLoaded = true
-		}
-	}
-
-	// 3. Try common filesystem locations if still not loaded
+	// 2. Try common filesystem locations if still not loaded
 	if !configLoaded {
 		v.SetConfigName("config")
 		v.AddConfigPath(".")
@@ -185,49 +166,6 @@ func Load(configPath string) (*Config, error) {
 	}
 
 	return &cfg, nil
-}
-
-// LoadWithEmbedded loads configuration with an embedded filesystem
-// This is a convenience function for use with embedded configs
-func LoadWithEmbedded(configPath string, embeddedFS embed.FS) (*Config, error) {
-	EmbeddedFS = embeddedFS
-	return Load(configPath)
-}
-
-// tryLoadEmbeddedConfig attempts to load config from the embedded filesystem
-func tryLoadEmbeddedConfig(configPath string) ([]byte, error) {
-	// Check if EmbeddedFS has any files
-	entries, err := fs.ReadDir(EmbeddedFS, ".")
-	if err != nil || len(entries) == 0 {
-		return nil, fmt.Errorf("no embedded config available")
-	}
-
-	// Try the specific config path first (strip directory prefix if present)
-	if configPath != "" {
-		// Try various path formats
-		pathsToTry := []string{
-			configPath,
-			strings.TrimPrefix(configPath, "configs/"),
-			strings.TrimPrefix(configPath, "./configs/"),
-			strings.TrimPrefix(configPath, "./"),
-		}
-
-		for _, path := range pathsToTry {
-			if data, err := fs.ReadFile(EmbeddedFS, path); err == nil {
-				return data, nil
-			}
-		}
-	}
-
-	// Try default config names
-	defaultNames := []string{"config.yaml", "config.yml"}
-	for _, name := range defaultNames {
-		if data, err := fs.ReadFile(EmbeddedFS, name); err == nil {
-			return data, nil
-		}
-	}
-
-	return nil, fmt.Errorf("config file not found in embedded filesystem")
 }
 
 // setDefaults sets default configuration values

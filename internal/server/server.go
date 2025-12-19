@@ -5,7 +5,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/bravo68web/githut/configs"
 	"github.com/bravo68web/githut/internal/config"
 	"github.com/bravo68web/githut/internal/infrastructure/database"
 )
@@ -24,8 +23,8 @@ func New() *Server {
 		configPath = "configs/config.yaml"
 	}
 
-	// Load configuration (with embedded config fallback)
-	cfg, err := config.LoadWithEmbedded(configPath, configs.EmbeddedConfigs)
+	// Load configuration
+	cfg, err := config.Load(configPath)
 	if err != nil {
 		panic("Failed to load configuration: " + err.Error())
 	}
