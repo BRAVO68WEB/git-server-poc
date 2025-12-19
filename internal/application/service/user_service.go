@@ -15,37 +15,34 @@ import (
 
 // UserService handles user-related business logic
 type UserService struct {
-	userRepo    repository.UserRepository
-	authService *AuthServiceImpl
+	userRepo repository.UserRepository
 }
 
 // NewUserService creates a new UserService instance
 func NewUserService(
 	userRepo repository.UserRepository,
-	authService *AuthServiceImpl,
 ) *UserService {
 	return &UserService{
-		userRepo:    userRepo,
-		authService: authService,
+		userRepo: userRepo,
 	}
 }
 
-// CreateUserRequest represents a request to create a new user
+// CreateUserRequest represents a request to create a new user (for OIDC flow)
 type CreateUserRequest struct {
-	Username string
-	Email    string
-	Password string
-	IsAdmin  bool
+	Username    string
+	Email       string
+	OIDCSubject string
+	OIDCIssuer  string
+	IsAdmin     bool
 }
 
 // UpdateUserRequest represents a request to update a user
 type UpdateUserRequest struct {
-	Email    *string
-	Password *string
-	IsAdmin  *bool
+	Email   *string
+	IsAdmin *bool
 }
 
-// CreateUser creates a new user
+// CreateUser creates a new user (typically from OIDC flow)
 func (s *UserService) CreateUser(ctx context.Context, req CreateUserRequest) (*models.User, error) {
 	// Validate username
 	if err := s.validateUsername(req.Username); err != nil {
@@ -54,11 +51,6 @@ func (s *UserService) CreateUser(ctx context.Context, req CreateUserRequest) (*m
 
 	// Validate email
 	if err := s.validateEmail(req.Email); err != nil {
-		return nil, err
-	}
-
-	// Validate password
-	if err := s.validatePassword(req.Password); err != nil {
 		return nil, err
 	}
 
@@ -80,18 +72,13 @@ func (s *UserService) CreateUser(ctx context.Context, req CreateUserRequest) (*m
 		return nil, apperrors.Conflict("email already registered", apperrors.ErrUserExists)
 	}
 
-	// Hash password
-	passwordHash, err := s.authService.HashPassword(req.Password)
-	if err != nil {
-		return nil, fmt.Errorf("failed to hash password: %w", err)
-	}
-
 	// Create user
 	user := &models.User{
-		Username:     req.Username,
-		Email:        strings.ToLower(req.Email),
-		PasswordHash: passwordHash,
-		IsAdmin:      req.IsAdmin,
+		Username:    req.Username,
+		Email:       strings.ToLower(req.Email),
+		OIDCSubject: req.OIDCSubject,
+		OIDCIssuer:  req.OIDCIssuer,
+		IsAdmin:     req.IsAdmin,
 	}
 
 	if err := s.userRepo.Create(ctx, user); err != nil {
@@ -114,6 +101,11 @@ func (s *UserService) GetUserByUsername(ctx context.Context, username string) (*
 // GetUserByEmail retrieves a user by email
 func (s *UserService) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
 	return s.userRepo.FindByEmail(ctx, strings.ToLower(email))
+}
+
+// GetUserByOIDCSubject retrieves a user by OIDC subject and issuer
+func (s *UserService) GetUserByOIDCSubject(ctx context.Context, subject, issuer string) (*models.User, error) {
+	return s.userRepo.FindByOIDCSubject(ctx, subject, issuer)
 }
 
 // UpdateUser updates a user's information
@@ -142,19 +134,6 @@ func (s *UserService) UpdateUser(ctx context.Context, id uuid.UUID, req UpdateUs
 			}
 			user.Email = normalizedEmail
 		}
-	}
-
-	// Update password if provided
-	if req.Password != nil {
-		if err := s.validatePassword(*req.Password); err != nil {
-			return nil, err
-		}
-
-		passwordHash, err := s.authService.HashPassword(*req.Password)
-		if err != nil {
-			return nil, fmt.Errorf("failed to hash password: %w", err)
-		}
-		user.PasswordHash = passwordHash
 	}
 
 	// Update admin status if provided
@@ -210,39 +189,6 @@ func (s *UserService) ListUsers(ctx context.Context, page, perPage int) ([]*mode
 	return users, total, nil
 }
 
-// ChangePassword changes a user's password
-func (s *UserService) ChangePassword(ctx context.Context, userID uuid.UUID, currentPassword, newPassword string) error {
-	// Get user
-	user, err := s.userRepo.FindByID(ctx, userID)
-	if err != nil {
-		return err
-	}
-
-	// Verify current password
-	if err := s.authService.VerifyPassword(user.PasswordHash, currentPassword); err != nil {
-		return apperrors.Unauthorized("current password is incorrect", apperrors.ErrInvalidCredentials)
-	}
-
-	// Validate new password
-	if err := s.validatePassword(newPassword); err != nil {
-		return err
-	}
-
-	// Hash new password
-	passwordHash, err := s.authService.HashPassword(newPassword)
-	if err != nil {
-		return fmt.Errorf("failed to hash password: %w", err)
-	}
-
-	// Update password
-	user.PasswordHash = passwordHash
-	if err := s.userRepo.Update(ctx, user); err != nil {
-		return fmt.Errorf("failed to update password: %w", err)
-	}
-
-	return nil
-}
-
 // validateUsername validates a username
 func (s *UserService) validateUsername(username string) error {
 	if username == "" {
@@ -283,32 +229,6 @@ func (s *UserService) validateEmail(email string) error {
 	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
 	if !emailRegex.MatchString(email) {
 		return apperrors.ValidationError("email", "invalid email format")
-	}
-
-	return nil
-}
-
-// validatePassword validates a password
-func (s *UserService) validatePassword(password string) error {
-	if password == "" {
-		return apperrors.ValidationError("password", "password is required")
-	}
-
-	if len(password) < 8 {
-		return apperrors.ValidationError("password", "password must be at least 8 characters")
-	}
-
-	if len(password) > 128 {
-		return apperrors.ValidationError("password", "password must be 128 characters or less")
-	}
-
-	// Check for at least one uppercase, one lowercase, and one number
-	hasUpper := regexp.MustCompile(`[A-Z]`).MatchString(password)
-	hasLower := regexp.MustCompile(`[a-z]`).MatchString(password)
-	hasNumber := regexp.MustCompile(`[0-9]`).MatchString(password)
-
-	if !hasUpper || !hasLower || !hasNumber {
-		return apperrors.ValidationError("password", "password must contain at least one uppercase letter, one lowercase letter, and one number")
 	}
 
 	return nil

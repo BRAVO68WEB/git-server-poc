@@ -21,6 +21,7 @@ type Config struct {
 	Database DatabaseConfig `mapstructure:"database"`
 	Storage  StorageConfig  `mapstructure:"storage"`
 	SSH      SSHConfig      `mapstructure:"ssh"`
+	OIDC     OIDCConfig     `mapstructure:"oidc"`
 	OPA      OPAConfig      `mapstructure:"opa"`
 	Logging  LoggingConfig  `mapstructure:"logging"`
 }
@@ -82,6 +83,18 @@ type SSHConfig struct {
 // Address returns the SSH server address
 func (s *SSHConfig) Address() string {
 	return fmt.Sprintf("%s:%d", s.Host, s.Port)
+}
+
+// OIDCConfig holds OpenID Connect configuration
+type OIDCConfig struct {
+	Enabled      bool     `mapstructure:"enabled"`
+	IssuerURL    string   `mapstructure:"issuer_url"`    // OIDC provider's issuer URL (e.g., https://accounts.google.com)
+	ClientID     string   `mapstructure:"client_id"`     // OAuth2 client ID
+	ClientSecret string   `mapstructure:"client_secret"` // OAuth2 client secret
+	RedirectURL  string   `mapstructure:"redirect_url"`  // Callback URL (e.g., http://localhost:8080/api/v1/auth/oidc/callback)
+	FrontendURL  string   `mapstructure:"frontend_url"`  // Frontend URL for redirecting after OIDC callback (e.g., http://localhost:3000)
+	Scopes       []string `mapstructure:"scopes"`        // OIDC scopes (default: openid, profile, email)
+	JWTSecret    string   `mapstructure:"jwt_secret"`    // Secret for signing session JWTs
 }
 
 // OPAConfig holds Open Policy Agent configuration
@@ -242,6 +255,16 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("ssh.port", 2222)
 	v.SetDefault("ssh.host_key_path", "./ssh_host_key")
 
+	// OIDC defaults
+	v.SetDefault("oidc.enabled", false)
+	v.SetDefault("oidc.issuer_url", "")
+	v.SetDefault("oidc.client_id", "")
+	v.SetDefault("oidc.client_secret", "")
+	v.SetDefault("oidc.redirect_url", "")
+	v.SetDefault("oidc.frontend_url", "http://localhost:3000")
+	v.SetDefault("oidc.scopes", []string{"openid", "profile", "email"})
+	v.SetDefault("oidc.jwt_secret", "change-this-secret-in-production")
+
 	// OPA defaults (using embedded Go SDK)
 	v.SetDefault("opa.enabled", false)
 	v.SetDefault("opa.policy_path", "./policies/rbac.rego")
@@ -266,6 +289,20 @@ func overrideFromEnv(v *viper.Viper) {
 	}
 	if s3Secret := os.Getenv("AWS_SECRET_ACCESS_KEY"); s3Secret != "" {
 		v.Set("storage.s3_secret_key", s3Secret)
+	}
+
+	// OIDC credentials from env (more secure than config file)
+	if oidcClientID := os.Getenv("GITSERVER_OIDC_CLIENT_ID"); oidcClientID != "" {
+		v.Set("oidc.client_id", oidcClientID)
+	}
+	if oidcClientSecret := os.Getenv("GITSERVER_OIDC_CLIENT_SECRET"); oidcClientSecret != "" {
+		v.Set("oidc.client_secret", oidcClientSecret)
+	}
+	if oidcJWTSecret := os.Getenv("GITSERVER_OIDC_JWT_SECRET"); oidcJWTSecret != "" {
+		v.Set("oidc.jwt_secret", oidcJWTSecret)
+	}
+	if oidcFrontendURL := os.Getenv("GITSERVER_OIDC_FRONTEND_URL"); oidcFrontendURL != "" {
+		v.Set("oidc.frontend_url", oidcFrontendURL)
 	}
 }
 
@@ -311,6 +348,22 @@ func (c *Config) Validate() error {
 	if c.OPA.Enabled {
 		if c.OPA.PolicyPath == "" {
 			return fmt.Errorf("OPA policy path is required when OPA is enabled")
+		}
+	}
+
+	// Validate OIDC config if enabled
+	if c.OIDC.Enabled {
+		if c.OIDC.IssuerURL == "" {
+			return fmt.Errorf("OIDC issuer URL is required when OIDC is enabled")
+		}
+		// if c.OIDC.ClientSecret == "" {
+		// 	return fmt.Errorf("OIDC client secret is required when OIDC is enabled")
+		// }
+		if c.OIDC.RedirectURL == "" {
+			return fmt.Errorf("OIDC redirect URL is required when OIDC is enabled")
+		}
+		if c.OIDC.JWTSecret == "" {
+			return fmt.Errorf("OIDC JWT secret is required when OIDC is enabled")
 		}
 	}
 

@@ -6,19 +6,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// LoginRequest represents a user login request
-type LoginRequest struct {
-	Username string `json:"username" binding:"required"`
-	Password string `json:"password" binding:"required"`
-}
-
-// LoginResponse represents a login response with token
-type LoginResponse struct {
-	Token     string    `json:"token"`
-	ExpiresAt time.Time `json:"expires_at"`
-	User      UserInfo  `json:"user"`
-}
-
 // UserInfo represents basic user information in responses
 type UserInfo struct {
 	ID       uuid.UUID `json:"id"`
@@ -27,17 +14,17 @@ type UserInfo struct {
 	IsAdmin  bool      `json:"is_admin"`
 }
 
-// RegisterRequest represents a user registration request
-type RegisterRequest struct {
-	Username string `json:"username" binding:"required,min=3,max=50"`
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=8"`
-}
-
-// RegisterResponse represents a registration response
-type RegisterResponse struct {
+// OIDCCallbackResponse represents the response after successful OIDC authentication
+type OIDCCallbackResponse struct {
+	Token   string   `json:"token"`
 	User    UserInfo `json:"user"`
 	Message string   `json:"message"`
+}
+
+// OIDCConfigResponse represents the OIDC configuration status
+type OIDCConfigResponse struct {
+	OIDCEnabled     bool `json:"oidc_enabled"`
+	OIDCInitialized bool `json:"oidc_initialized"`
 }
 
 // CreateTokenRequest represents a request to create an access token
@@ -98,12 +85,6 @@ type ListSSHKeysResponse struct {
 	Total int          `json:"total"`
 }
 
-// ChangePasswordRequest represents a request to change password
-type ChangePasswordRequest struct {
-	CurrentPassword string `json:"current_password" binding:"required"`
-	NewPassword     string `json:"new_password" binding:"required,min=8"`
-}
-
 // UpdateProfileRequest represents a request to update user profile
 type UpdateProfileRequest struct {
 	Email *string `json:"email,omitempty" binding:"omitempty,email"`
@@ -122,23 +103,6 @@ type AuthenticatedUser struct {
 	Email    string    `json:"email"`
 	IsAdmin  bool      `json:"is_admin"`
 	Scopes   []string  `json:"scopes,omitempty"` // For token-based auth
-}
-
-// RefreshTokenRequest represents a request to refresh a token
-type RefreshTokenRequest struct {
-	RefreshToken string `json:"refresh_token" binding:"required"`
-}
-
-// RefreshTokenResponse represents a response with new tokens
-type RefreshTokenResponse struct {
-	Token        string    `json:"token"`
-	RefreshToken string    `json:"refresh_token"`
-	ExpiresAt    time.Time `json:"expires_at"`
-}
-
-// RevokeTokenRequest represents a request to revoke a token
-type RevokeTokenRequest struct {
-	TokenID uuid.UUID `json:"token_id" binding:"required"`
 }
 
 // ErrorResponse represents an error response

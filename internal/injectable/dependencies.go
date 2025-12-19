@@ -1,6 +1,9 @@
 package injectable
 
 import (
+	"context"
+	"log"
+
 	"github.com/bravo68web/githut/internal/application/service"
 	"github.com/bravo68web/githut/internal/config"
 	domainservice "github.com/bravo68web/githut/internal/domain/service"
@@ -18,6 +21,7 @@ type Dependencies struct {
 	RepoService   *service.RepoService
 	UserService   *service.UserService
 	SSHKeyService *service.SSHKeyService
+	OIDCService   *service.OIDCService
 	Storage       domainservice.StorageService
 }
 
@@ -34,8 +38,17 @@ func LoadDependencies(cfg *config.Config, db *database.Database) Dependencies {
 		panic("Failed to initialize storage service: " + err.Error())
 	}
 
+	// Initialize OIDC service
+	oidcService := service.NewOIDCService(&cfg.OIDC, userRepo)
+	if cfg.OIDC.Enabled {
+		if err := oidcService.Initialize(context.Background()); err != nil {
+			log.Printf("Warning: Failed to initialize OIDC service: %v", err)
+			// Don't panic - OIDC might be optional or provider might be temporarily unavailable
+		}
+	}
+
 	// Initialize services
-	authService := service.NewAuthService(userRepo, sshKeyRepo)
+	authService := service.NewAuthService(userRepo, sshKeyRepo, oidcService, &cfg.OIDC)
 	gitService := git.NewGitOperations(storageService)
 	repoService := service.NewRepoService(
 		repoRepo,
@@ -43,7 +56,7 @@ func LoadDependencies(cfg *config.Config, db *database.Database) Dependencies {
 		gitService,
 		storageService,
 	)
-	userService := service.NewUserService(userRepo, authService)
+	userService := service.NewUserService(userRepo)
 	sshKeyService := service.NewSSHKeyService(sshKeyRepo, userRepo)
 
 	return Dependencies{
@@ -52,6 +65,7 @@ func LoadDependencies(cfg *config.Config, db *database.Database) Dependencies {
 		RepoService:   repoService,
 		UserService:   userService,
 		SSHKeyService: sshKeyService,
+		OIDCService:   oidcService,
 		Storage:       storageService,
 	}
 }

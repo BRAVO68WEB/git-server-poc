@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"encoding/base64"
 	"net/http"
 	"strings"
 
@@ -55,7 +54,6 @@ func (m *AuthMiddleware) RequireAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user := m.extractAndValidateUser(c)
 		if user == nil {
-			c.Header("WWW-Authenticate", `Basic realm="Git Server"`)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"error":   "unauthorized",
 				"message": "authentication required",
@@ -73,7 +71,6 @@ func (m *AuthMiddleware) RequireAdmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user := m.extractAndValidateUser(c)
 		if user == nil {
-			c.Header("WWW-Authenticate", `Basic realm="Git Server"`)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"error":   "unauthorized",
 				"message": "authentication required",
@@ -95,82 +92,46 @@ func (m *AuthMiddleware) RequireAdmin() gin.HandlerFunc {
 }
 
 // extractAndValidateUser extracts and validates the user from the request
+// Supports:
+// - Bearer token (session JWT from OIDC or PAT)
+// - Query parameter access_token (for git operations)
 func (m *AuthMiddleware) extractAndValidateUser(c *gin.Context) *models.User {
 	ctx := c.Request.Context()
 
-	// Try Bearer token first
+	// Try Bearer token first (Authorization header)
 	authHeader := c.GetHeader("Authorization")
-	if authHeader != "" {
-		// Check for Bearer token
-		if strings.HasPrefix(authHeader, "Bearer ") {
-			token := strings.TrimPrefix(authHeader, "Bearer ")
-			user, err := m.authService.AuthenticateToken(ctx, token)
-			if err != nil {
-				// TODO: handle error logging
-			} else {
-				return user
-			}
+	if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+
+		// Try session token authentication first (OIDC JWT)
+		user, err := m.authService.AuthenticateSession(ctx, token)
+		if err == nil && user != nil {
+			return user
 		}
 
-		// Check for Basic auth
-		if strings.HasPrefix(authHeader, "Basic ") {
-			user := m.authenticateBasic(ctx, authHeader)
-			if user != nil {
-				return user
-			}
+		// If session auth fails, try PAT (Personal Access Token) authentication
+		user, err = m.authService.AuthenticateToken(ctx, token)
+		if err == nil && user != nil {
+			return user
 		}
 	}
 
 	// Try token from query parameter (for git operations)
 	if token := c.Query("access_token"); token != "" {
-		user, err := m.authService.AuthenticateToken(ctx, token)
-		if err != nil {
-			// TODO: handle error logging
-		} else {
+		// Try session token authentication first
+		user, err := m.authService.AuthenticateSession(ctx, token)
+		if err == nil && user != nil {
+			return user
+		}
+
+		// Try PAT authentication
+		user, err = m.authService.AuthenticateToken(ctx, token)
+		if err == nil && user != nil {
 			return user
 		}
 	}
 
 	return nil
-}
-
-// authenticateBasic handles Basic authentication
-func (m *AuthMiddleware) authenticateBasic(ctx context.Context, authHeader string) *models.User {
-	// Decode Basic auth
-	encoded := strings.TrimPrefix(authHeader, "Basic ")
-	decoded, err := base64.StdEncoding.DecodeString(encoded)
-	if err != nil {
-		// TODO: handle error logging
-		return nil
-	}
-
-	credentials := strings.SplitN(string(decoded), ":", 2)
-	if len(credentials) != 2 {
-		//TODO: handle error logging
-		return nil
-	}
-
-	username := credentials[0]
-	password := credentials[1]
-
-	// Try authenticating with username and password
-	user, err := m.authService.AuthenticateBasic(ctx, username, password)
-	if err != nil {
-		// If password looks like a token (long string), try token auth
-		// This allows using personal access tokens with basic auth
-		if len(password) > 20 {
-			user, err = m.authService.AuthenticateToken(ctx, password)
-			if err != nil {
-				// TODO: handle error logging
-				return nil
-			}
-			return user
-		}
-
-		return nil
-	}
-
-	return user
 }
 
 // setUserContext sets the user in the gin context
@@ -227,7 +188,6 @@ func (m *AuthMiddleware) AuthForGit(isWrite bool) gin.HandlerFunc {
 
 		// For write operations, always require auth
 		if isWrite && user == nil {
-			c.Header("WWW-Authenticate", `Basic realm="Git Server"`)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"error":   "unauthorized",
 				"message": "authentication required for push",

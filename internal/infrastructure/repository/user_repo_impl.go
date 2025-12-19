@@ -140,3 +140,15 @@ func (r *UserRepoImpl) ExistsByEmail(ctx context.Context, email string) (bool, e
 	}
 	return count > 0, nil
 }
+
+// FindByOIDCSubject retrieves a user by their OIDC subject and issuer
+func (r *UserRepoImpl) FindByOIDCSubject(ctx context.Context, subject, issuer string) (*models.User, error) {
+	var user models.User
+	if err := r.db.WithContext(ctx).Where("oidc_subject = ? AND oidc_issuer = ?", subject, issuer).First(&user).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, apperror.NotFound("user", apperror.ErrNotFound)
+		}
+		return nil, apperror.DatabaseError("find user by oidc subject", err)
+	}
+	return &user, nil
+}

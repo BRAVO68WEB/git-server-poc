@@ -1,8 +1,8 @@
 import {
   UserInfo,
-  RegisterRequest,
-  RegisterResponse,
-  ChangePasswordRequest,
+  OIDCConfigResponse,
+  OIDCCallbackResponse,
+  OIDCLogoutResponse,
   CreateRepoRequest,
   UpdateRepoRequest,
   RepoResponse,
@@ -31,11 +31,9 @@ import {
   AddSSHKeyResponse,
   ListSSHKeysResponse,
 } from "./types";
+import { env } from "./env";
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  process.env.API_URL ||
-  "http://localhost:8080";
+const API_URL = env.NEXT_PUBLIC_API_URL;
 
 // Token storage helpers (client-side only)
 function getToken(): string | null {
@@ -55,6 +53,30 @@ function removeToken(): void {
   }
 }
 
+// User info storage helpers (client-side only)
+function getUserInfo(): UserInfo | null {
+  if (typeof window === "undefined") return null;
+  const userInfoStr = localStorage.getItem("user_info");
+  if (!userInfoStr) return null;
+  try {
+    return JSON.parse(userInfoStr) as UserInfo;
+  } catch {
+    return null;
+  }
+}
+
+function setUserInfo(user: UserInfo): void {
+  if (typeof window !== "undefined") {
+    localStorage.setItem("user_info", JSON.stringify(user));
+  }
+}
+
+function removeUserInfo(): void {
+  if (typeof window !== "undefined") {
+    localStorage.removeItem("user_info");
+  }
+}
+
 // Request helper with authentication
 async function apiRequest<T>(
   endpoint: string,
@@ -67,12 +89,8 @@ async function apiRequest<T>(
   };
 
   if (token) {
-    // Check if token looks like a Basic auth token (base64 encoded username:password)
-    // Basic auth tokens are typically shorter and don't contain dots like JWTs
-    const isBasicAuth = !token.includes(".") && token.length < 200;
-    const authType = isBasicAuth ? "Basic" : "Bearer";
-    (headers as Record<string, string>)["Authorization"] =
-      `${authType} ${token}`;
+    // All tokens are now Bearer tokens (JWT from OIDC or PAT)
+    (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
   }
 
   const res = await fetch(`${API_URL}${endpoint}`, {
@@ -101,85 +119,140 @@ export async function getHealth(): Promise<{ name: string; status: string }> {
 }
 
 // ============================================================================
-// Authentication API
+// OIDC Authentication API
 // ============================================================================
 
-export async function register(
-  data: RegisterRequest,
-): Promise<RegisterResponse> {
-  return apiRequest("/api/v1/auth/register", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
+/**
+ * Get OIDC configuration status
+ * Returns whether OIDC is enabled and initialized
+ */
+export async function getOIDCConfig(): Promise<OIDCConfigResponse> {
+  return apiRequest("/api/v1/auth/oidc/config");
 }
 
-export async function getCurrentUser(): Promise<UserInfo> {
-  return apiRequest("/api/v1/auth/me");
+/**
+ * Get the OIDC login URL
+ * The user should be redirected to this URL to start the OIDC flow
+ */
+export function getOIDCLoginURL(): string {
+  return `${API_URL}/api/v1/auth/oidc/login`;
 }
 
-export async function changePassword(
-  data: ChangePasswordRequest,
-): Promise<SuccessResponse> {
-  return apiRequest("/api/v1/auth/change-password", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
+/**
+ * Initiate OIDC login by redirecting to the identity provider
+ * This will redirect the browser to the OIDC provider's login page
+ */
+export function initiateOIDCLogin(): void {
+  if (typeof window !== "undefined") {
+    window.location.href = getOIDCLoginURL();
+  }
 }
 
-// Auth helper functions
-export function logout(): void {
-  removeToken();
+/**
+ * Handle OIDC callback - exchange code for token
+ * This is typically called from the callback page after the OIDC provider redirects back
+ * The token is automatically stored in localStorage
+ */
+export async function handleOIDCCallback(
+  code: string,
+  state: string,
+): Promise<OIDCCallbackResponse> {
+  // The callback is handled server-side, but we need to process the response
+  // This function is called after the redirect, when we have the token in the response
+  const response = await apiRequest<OIDCCallbackResponse>(
+    `/api/v1/auth/oidc/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
+  );
+
+  // Store the session token
+  if (response.token) {
+    setToken(response.token);
+  }
+
+  // Store the user info
+  if (response.user) {
+    setUserInfo(response.user);
+  }
+
+  return response;
 }
 
-export function isAuthenticated(): boolean {
-  return getToken() !== null;
-}
-
+/**
+ * Store the auth token (called from callback page)
+ */
 export function storeAuthToken(token: string): void {
   setToken(token);
 }
 
-export interface LoginRequest {
-  username: string;
-  password: string;
+/**
+ * Get the current authenticated user
+ */
+export async function getCurrentUser(): Promise<UserInfo> {
+  return apiRequest("/api/v1/auth/me");
 }
 
-export interface LoginResponse {
-  user: UserInfo;
-  token: string;
-}
+/**
+ * Logout the user
+ * Clears the local token and optionally returns the provider logout URL
+ */
+export async function logout(
+  redirectUri?: string,
+): Promise<OIDCLogoutResponse | null> {
+  try {
+    const params = redirectUri
+      ? `?redirect_uri=${encodeURIComponent(redirectUri)}`
+      : "";
+    const response = await apiRequest<OIDCLogoutResponse>(
+      `/api/v1/auth/oidc/logout${params}`,
+      { method: "POST" },
+    );
 
-export async function login(data: LoginRequest): Promise<LoginResponse> {
-  // Create Basic Auth token
-  const basicToken = btoa(`${data.username}:${data.password}`);
+    // Clear local token and user info
+    removeToken();
+    removeUserInfo();
 
-  // Try to authenticate by calling /api/v1/auth/me with Basic Auth
-  const res = await fetch(`${API_URL}/api/v1/auth/me`, {
-    headers: {
-      Authorization: `Basic ${basicToken}`,
-      "Content-Type": "application/json",
-    },
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({
-      error: "auth_failed",
-      message: "Invalid username or password",
-    }));
-    throw new Error(errorData.message || "Authentication failed");
+    return response;
+  } catch {
+    // Even if the API call fails, clear the local token and user info
+    removeToken();
+    removeUserInfo();
+    return null;
   }
+}
 
-  const user: UserInfo = await res.json();
+/**
+ * Logout locally only (clear token without calling the API)
+ */
+export function logoutLocal(): void {
+  removeToken();
+  removeUserInfo();
+}
 
-  // Store the Basic Auth token for subsequent requests
-  // The token is the base64-encoded credentials
-  setToken(basicToken);
+/**
+ * Store user info in localStorage
+ */
+export function storeUserInfo(user: UserInfo): void {
+  setUserInfo(user);
+}
 
-  return {
-    user,
-    token: basicToken,
-  };
+/**
+ * Get stored user info from localStorage (without API call)
+ */
+export function getStoredUserInfo(): UserInfo | null {
+  return getUserInfo();
+}
+
+/**
+ * Check if the user is authenticated (has a token)
+ */
+export function isAuthenticated(): boolean {
+  return getToken() !== null;
+}
+
+/**
+ * Get the current auth token
+ */
+export function getAuthToken(): string | null {
+  return getToken();
 }
 
 // ============================================================================

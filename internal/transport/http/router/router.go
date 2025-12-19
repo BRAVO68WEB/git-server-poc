@@ -24,7 +24,12 @@ func NewRouter(s *server.Server) *Router {
 // RegisterRoutes sets up the routes and middleware for the server.
 func (r *Router) RegisterRoutes() {
 	// Apply CORS middleware
-	r.server.Use(cors.Default())
+	r.server.Use(cors.New(cors.Config{
+		AllowAllOrigins:  true,
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Length", "Content-Type", "Authorization"},
+		AllowCredentials: true,
+	}))
 
 	r.docsRouter()
 

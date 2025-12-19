@@ -6,20 +6,21 @@ export interface UserInfo {
   is_admin: boolean;
 }
 
-export interface RegisterRequest {
-  username: string;
-  email: string;
-  password: string;
+// OIDC types
+export interface OIDCConfigResponse {
+  oidc_enabled: boolean;
+  oidc_initialized: boolean;
 }
 
-export interface RegisterResponse {
+export interface OIDCCallbackResponse {
+  token: string;
   user: UserInfo;
   message: string;
 }
 
-export interface ChangePasswordRequest {
-  current_password: string;
-  new_password: string;
+export interface OIDCLogoutResponse {
+  message: string;
+  logout_url?: string;
 }
 
 // Repository types

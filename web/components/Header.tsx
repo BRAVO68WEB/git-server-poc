@@ -3,7 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
-import { isAuthenticated, logout, getCurrentUser } from "@/lib/api";
+import {
+  isAuthenticated,
+  logout,
+  logoutLocal,
+  getCurrentUser,
+  getStoredUserInfo,
+  storeUserInfo,
+} from "@/lib/api";
 import { UserInfo } from "@/lib/types";
 
 export default function Header() {
@@ -16,9 +23,19 @@ export default function Header() {
     const checkAuth = async () => {
       if (isAuthenticated()) {
         setIsLoggedIn(true);
+
+        // First, try to use stored user info for immediate display
+        const storedUser = getStoredUserInfo();
+        if (storedUser) {
+          setUser(storedUser);
+        }
+
+        // Then verify with the API and update if needed
         try {
           const userData = await getCurrentUser();
           setUser(userData);
+          // Update stored user info if it changed
+          storeUserInfo(userData);
         } catch {
           // Token might be invalid
           setIsLoggedIn(false);
@@ -33,12 +50,27 @@ export default function Header() {
     checkAuth();
   }, [pathname]);
 
-  const handleLogout = () => {
-    logout();
-    setIsLoggedIn(false);
-    setUser(null);
-    setShowUserMenu(false);
-    window.location.href = "/";
+  const handleLogout = async () => {
+    try {
+      const response = await logout();
+      setIsLoggedIn(false);
+      setUser(null);
+      setShowUserMenu(false);
+
+      // If the provider has a logout URL, redirect to it
+      if (response?.logout_url) {
+        window.location.href = response.logout_url;
+      } else {
+        window.location.href = "/";
+      }
+    } catch {
+      // If logout fails, still clear local state
+      logoutLocal();
+      setIsLoggedIn(false);
+      setUser(null);
+      setShowUserMenu(false);
+      window.location.href = "/";
+    }
   };
 
   return (
@@ -193,10 +225,10 @@ export default function Header() {
                   Sign in
                 </Link>
                 <Link
-                  href="/auth/register"
+                  href="/auth/login"
                   className="px-3 py-1.5 text-sm bg-accent text-white rounded-md hover:opacity-90 transition-opacity"
                 >
-                  Sign up
+                  Sign up with SSO
                 </Link>
               </div>
             )}

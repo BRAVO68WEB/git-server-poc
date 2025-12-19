@@ -6,52 +6,48 @@ import (
 	"encoding/hex"
 	"fmt"
 
+	"github.com/bravo68web/githut/internal/config"
 	"github.com/bravo68web/githut/internal/domain/models"
 	"github.com/bravo68web/githut/internal/domain/repository"
 	"github.com/bravo68web/githut/internal/domain/service"
 	apperrors "github.com/bravo68web/githut/pkg/errors"
-	"golang.org/x/crypto/bcrypt"
+	"github.com/google/uuid"
 )
 
 // AuthServiceImpl implements the AuthService interface
 type AuthServiceImpl struct {
-	userRepo   repository.UserRepository
-	sshKeyRepo repository.SSHKeyRepository
+	userRepo    repository.UserRepository
+	sshKeyRepo  repository.SSHKeyRepository
+	oidcService *OIDCService
+	config      *config.OIDCConfig
 }
 
 // NewAuthService creates a new AuthServiceImpl instance
 func NewAuthService(
 	userRepo repository.UserRepository,
 	sshKeyRepo repository.SSHKeyRepository,
+	oidcService *OIDCService,
+	oidcConfig *config.OIDCConfig,
 ) *AuthServiceImpl {
 	return &AuthServiceImpl{
-		userRepo:   userRepo,
-		sshKeyRepo: sshKeyRepo,
+		userRepo:    userRepo,
+		sshKeyRepo:  sshKeyRepo,
+		oidcService: oidcService,
+		config:      oidcConfig,
 	}
 }
 
-// AuthenticateBasic authenticates a user using username and password
-func (s *AuthServiceImpl) AuthenticateBasic(ctx context.Context, username, password string) (*models.User, error) {
-	// Find user by username
-	user, err := s.userRepo.FindByUsername(ctx, username)
-	if err != nil {
-		if apperrors.IsNotFound(err) {
-			return nil, apperrors.Unauthorized("invalid credentials", apperrors.ErrInvalidCredentials)
-		}
-		return nil, fmt.Errorf("failed to find user: %w", err)
-	}
-
-	// Verify password
-	if err := s.VerifyPassword(user.PasswordHash, password); err != nil {
-		return nil, apperrors.Unauthorized("invalid credentials", apperrors.ErrInvalidCredentials)
-	}
-
-	return user, nil
-}
-
-// AuthenticateToken authenticates a user using an access token
+// AuthenticateToken authenticates a user using an access token (PAT)
 func (s *AuthServiceImpl) AuthenticateToken(ctx context.Context, token string) (*models.User, error) {
-	panic("not implemented")
+	// TODO: Implement PAT (Personal Access Token) authentication
+	// For now, this is a placeholder that will be implemented when PAT feature is added
+	// The token should be hashed and looked up in a tokens table
+
+	// Hash the token to look it up
+	_ = s.hashToken(token)
+
+	// Placeholder: PAT authentication not yet implemented
+	return nil, apperrors.Unauthorized("token authentication not implemented", apperrors.ErrInvalidCredentials)
 }
 
 // AuthenticateSSH authenticates a user using their SSH public key fingerprint
@@ -90,18 +86,34 @@ func (s *AuthServiceImpl) AuthenticateSSHByFingerprint(ctx context.Context, fing
 	return s.AuthenticateSSH(ctx, []byte(fingerprint))
 }
 
-// HashPassword generates a secure hash from a plain text password
-func (s *AuthServiceImpl) HashPassword(password string) (string, error) {
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return "", fmt.Errorf("failed to hash password: %w", err)
+// AuthenticateSession authenticates a user using a session JWT (from OIDC login)
+func (s *AuthServiceImpl) AuthenticateSession(ctx context.Context, sessionToken string) (*models.User, error) {
+	if s.oidcService == nil {
+		return nil, apperrors.Unauthorized("OIDC not configured", apperrors.ErrInvalidCredentials)
 	}
-	return string(hash), nil
-}
 
-// VerifyPassword compares a hashed password with a plain text password
-func (s *AuthServiceImpl) VerifyPassword(hash, password string) error {
-	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+	// Validate the session token
+	claims, err := s.oidcService.ValidateSessionToken(sessionToken)
+	if err != nil {
+		return nil, apperrors.Unauthorized("invalid session token", err)
+	}
+
+	// Parse user ID from claims
+	userID, err := uuid.Parse(claims.UserID)
+	if err != nil {
+		return nil, apperrors.Unauthorized("invalid user ID in session", err)
+	}
+
+	// Get the user from database
+	user, err := s.userRepo.FindByID(ctx, userID)
+	if err != nil {
+		if apperrors.IsNotFound(err) {
+			return nil, apperrors.Unauthorized("user not found", apperrors.ErrInvalidCredentials)
+		}
+		return nil, fmt.Errorf("failed to find user: %w", err)
+	}
+
+	return user, nil
 }
 
 // hashToken creates a SHA256 hash of the token for secure storage

@@ -30,6 +30,26 @@ ssh:
   port: 2222
   host_key_path: "./ssh_host_key"
 
+# OIDC (OpenID Connect) Authentication
+# Configure your OIDC provider (e.g., Google, Keycloak, Auth0, Okta)
+oidc:
+  enabled: false
+  # OIDC provider's issuer URL (e.g., https://accounts.google.com, https://keycloak.example.com/realms/myrealm)
+  issuer_url: ""
+  # OAuth2 client ID from your OIDC provider
+  client_id: ""
+  # OAuth2 client secret from your OIDC provider (use env var GITSERVER_OIDC_CLIENT_SECRET in production)
+  client_secret: ""
+  # Callback URL where the OIDC provider will redirect after authentication
+  redirect_url: "http://localhost:8080/api/v1/auth/oidc/callback"
+  # OIDC scopes to request (default: openid, profile, email)
+  scopes:
+    - "openid"
+    - "profile"
+    - "email"
+  # Secret for signing session JWTs (use env var GITSERVER_OIDC_JWT_SECRET in production)
+  jwt_secret: "change-this-secret-in-production"
+
 # OPA (Open Policy Agent) Authorization
 # Uses the embedded OPA Go SDK - no external server required
 opa:

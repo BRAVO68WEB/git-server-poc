@@ -38,4 +38,7 @@ type UserRepository interface {
 
 	// ExistsByEmail checks if a user with the given email exists
 	ExistsByEmail(ctx context.Context, email string) (bool, error)
+
+	// FindByOIDCSubject retrieves a user by their OIDC subject and issuer
+	FindByOIDCSubject(ctx context.Context, subject, issuer string) (*models.User, error)
 }
