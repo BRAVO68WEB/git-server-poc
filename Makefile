@@ -20,7 +20,8 @@ web:
 .PHONY: dev
 dev:
 	@echo "Running in development environment..."
-	@make -j2 watch dev
+# 	@make -j2 watch dev
+	@make -j2 watch-server watch-cli
 
 ## update: updates the packages and tidy the modfile
 .PHONY: update

@@ -104,12 +104,32 @@ func (p *GitProtocol) GetInfoRefs(ctx context.Context, req InfoRefsRequest) (*In
 
 // HandleUploadPack handles git-upload-pack for fetch/clone operations
 func (p *GitProtocol) HandleUploadPack(ctx context.Context, repoPath string, input io.Reader, output io.Writer) error {
-	return p.runGitService(ctx, repoPath, ServiceUploadPack, input, output)
+	return p.runGitService(ctx, repoPath, ServiceUploadPack, input, output, true)
 }
 
 // HandleReceivePack handles git-receive-pack for push operations
 func (p *GitProtocol) HandleReceivePack(ctx context.Context, repoPath string, input io.Reader, output io.Writer) error {
-	err := p.runGitService(ctx, repoPath, ServiceReceivePack, input, output)
+	err := p.runGitService(ctx, repoPath, ServiceReceivePack, input, output, true)
+	if err != nil {
+		return err
+	}
+
+	// Update server info after receiving push
+	if err := p.updateServerInfo(ctx, repoPath); err != nil {
+		// TODO: log error but do not fail the push
+	}
+
+	return nil
+}
+
+// HandleUploadPackSSH handles git-upload-pack for SSH transport (stateful)
+func (p *GitProtocol) HandleUploadPackSSH(ctx context.Context, repoPath string, input io.Reader, output io.Writer) error {
+	return p.runGitService(ctx, repoPath, ServiceUploadPack, input, output, false)
+}
+
+// HandleReceivePackSSH handles git-receive-pack for SSH transport (stateful)
+func (p *GitProtocol) HandleReceivePackSSH(ctx context.Context, repoPath string, input io.Reader, output io.Writer) error {
+	err := p.runGitService(ctx, repoPath, ServiceReceivePack, input, output, false)
 	if err != nil {
 		return err
 	}
@@ -123,10 +143,17 @@ func (p *GitProtocol) HandleReceivePack(ctx context.Context, repoPath string, in
 }
 
 // runGitService executes a git service command
-func (p *GitProtocol) runGitService(ctx context.Context, repoPath string, service ServiceType, input io.Reader, output io.Writer) error {
+func (p *GitProtocol) runGitService(ctx context.Context, repoPath string, service ServiceType, input io.Reader, output io.Writer, stateless bool) error {
 	// Remove "git-" prefix from service name (e.g., "git-receive-pack" -> "receive-pack")
 	serviceName := strings.TrimPrefix(string(service), "git-")
-	cmd := exec.CommandContext(ctx, "git", serviceName, "--stateless-rpc", repoPath)
+
+	args := []string{serviceName}
+	if stateless {
+		args = append(args, "--stateless-rpc")
+	}
+	args = append(args, repoPath)
+
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = repoPath
 	cmd.Stdin = input
 	cmd.Stdout = output

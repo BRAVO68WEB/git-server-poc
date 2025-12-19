@@ -177,9 +177,9 @@ func (s *Server) handleGitCommand(sess ssh.Session, gitCmd, repoPath string) err
 	// Execute Git command
 	switch gitCmd {
 	case "git-upload-pack":
-		return s.gitProtocol.HandleUploadPack(ctx, repo.GitPath, sess, sess)
+		return s.gitProtocol.HandleUploadPackSSH(ctx, repo.GitPath, sess, sess)
 	case "git-receive-pack":
-		return s.gitProtocol.HandleReceivePack(ctx, repo.GitPath, sess, sess)
+		return s.gitProtocol.HandleReceivePackSSH(ctx, repo.GitPath, sess, sess)
 	case "git-upload-archive":
 		// git-upload-archive is less common but can be supported
 		return fmt.Errorf("git-upload-archive is not supported")
