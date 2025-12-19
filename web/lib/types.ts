@@ -173,7 +173,21 @@ export interface Branch {
 }
 
 export interface Diff {
+  commit_hash: string;
   content: string;
+  files_changed: number;
+  additions: number;
+  deletions: number;
+  files?: DiffFile[];
+}
+
+export interface DiffFile {
+  old_path: string;
+  new_path: string;
+  status: "added" | "deleted" | "modified" | "renamed";
+  additions: number;
+  deletions: number;
+  patch?: string;
 }
 
 export interface BlameLine {

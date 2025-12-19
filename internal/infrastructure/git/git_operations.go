@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -959,7 +960,7 @@ func (g *GitOperations) GetBlame(ctx context.Context, repoPath, ref, filePath st
 
 // GetDiff returns the diff (patch) for a specific commit
 func (g *GitOperations) GetDiff(ctx context.Context, repoPath, commitHash string) (*service.DiffResult, error) {
-	// Use git show to get the diff for the commit
+	// Get the raw diff content
 	cmd := exec.CommandContext(ctx, "git", "-C", repoPath, "show", "--format=", "-p", commitHash)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -969,10 +970,124 @@ func (g *GitOperations) GetDiff(ctx context.Context, repoPath, commitHash string
 		return nil, fmt.Errorf("failed to get diff for commit %s: %w (stderr: %s)", commitHash, err, stderr.String())
 	}
 
+	content := stdout.String()
+
+	// Get diff stats (files changed, additions, deletions)
+	statsCmd := exec.CommandContext(ctx, "git", "-C", repoPath, "show", "--format=", "--stat", "--numstat", commitHash)
+	var statsStdout, statsStderr bytes.Buffer
+	statsCmd.Stdout = &statsStdout
+	statsCmd.Stderr = &statsStderr
+
+	var filesChanged, additions, deletions int
+	var files []service.DiffFile
+
+	if err := statsCmd.Run(); err == nil {
+		// Parse numstat output for detailed file stats
+		// Format: additions<tab>deletions<tab>filename
+		lines := strings.Split(statsStdout.String(), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			// Skip non-numstat lines (the --stat summary lines)
+			parts := strings.Split(line, "\t")
+			if len(parts) >= 3 {
+				add, _ := strconv.Atoi(parts[0])
+				del, _ := strconv.Atoi(parts[1])
+				filePath := parts[2]
+
+				additions += add
+				deletions += del
+				filesChanged++
+
+				// Determine file status
+				status := "modified"
+				oldPath := filePath
+				newPath := filePath
+
+				// Check for renames (format: old => new)
+				if strings.Contains(filePath, " => ") {
+					status = "renamed"
+					renameParts := strings.Split(filePath, " => ")
+					if len(renameParts) == 2 {
+						oldPath = strings.TrimSpace(renameParts[0])
+						newPath = strings.TrimSpace(renameParts[1])
+					}
+				}
+
+				files = append(files, service.DiffFile{
+					OldPath:   oldPath,
+					NewPath:   newPath,
+					Status:    status,
+					Additions: add,
+					Deletions: del,
+				})
+			}
+		}
+	}
+
+	// If we couldn't parse stats, try to determine from the diff content
+	if filesChanged == 0 && content != "" {
+		// Count files from "diff --git" lines
+		diffLines := strings.Split(content, "\n")
+		for _, line := range diffLines {
+			if strings.HasPrefix(line, "diff --git") {
+				filesChanged++
+			} else if strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++") {
+				additions++
+			} else if strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "---") {
+				deletions++
+			}
+		}
+	}
+
+	// Parse individual file patches from the content
+	if len(files) > 0 && content != "" {
+		files = g.parseFilePatchesFromDiff(content, files)
+	}
+
 	return &service.DiffResult{
-		CommitHash: commitHash,
-		Content:    stdout.String(),
+		CommitHash:   commitHash,
+		Content:      content,
+		FilesChanged: filesChanged,
+		Additions:    additions,
+		Deletions:    deletions,
+		Files:        files,
 	}, nil
+}
+
+// parseFilePatchesFromDiff extracts individual file patches from the full diff content
+func (g *GitOperations) parseFilePatchesFromDiff(content string, files []service.DiffFile) []service.DiffFile {
+	// Split content by "diff --git" to get individual file diffs
+	parts := strings.Split(content, "diff --git ")
+
+	for i, part := range parts {
+		if i == 0 || part == "" {
+			continue
+		}
+
+		// Re-add the prefix that was removed by split
+		patch := "diff --git " + part
+
+		// Find which file this patch belongs to
+		for j := range files {
+			// Check if this patch is for this file
+			if strings.Contains(patch, files[j].NewPath) || strings.Contains(patch, files[j].OldPath) {
+				files[j].Patch = strings.TrimSpace(patch)
+
+				// Detect added/deleted files from the patch
+				if strings.Contains(patch, "new file mode") {
+					files[j].Status = "added"
+				} else if strings.Contains(patch, "deleted file mode") {
+					files[j].Status = "deleted"
+				}
+				break
+			}
+		}
+	}
+
+	return files
 }
 
 // Verify interface compliance at compile time
