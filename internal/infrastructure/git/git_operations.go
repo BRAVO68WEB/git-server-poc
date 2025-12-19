@@ -957,5 +957,23 @@ func (g *GitOperations) GetBlame(ctx context.Context, repoPath, ref, filePath st
 	return blameLines, nil
 }
 
+// GetDiff returns the diff (patch) for a specific commit
+func (g *GitOperations) GetDiff(ctx context.Context, repoPath, commitHash string) (*service.DiffResult, error) {
+	// Use git show to get the diff for the commit
+	cmd := exec.CommandContext(ctx, "git", "-C", repoPath, "show", "--format=", "-p", commitHash)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("failed to get diff for commit %s: %w (stderr: %s)", commitHash, err, stderr.String())
+	}
+
+	return &service.DiffResult{
+		CommitHash: commitHash,
+		Content:    stdout.String(),
+	}, nil
+}
+
 // Verify interface compliance at compile time
 var _ service.GitService = (*GitOperations)(nil)

@@ -92,6 +92,7 @@ func (d *Database) AutoMigrate() error {
 		&models.User{},
 		&models.Repository{},
 		&models.SSHKey{},
+		&models.Token{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to auto-migrate: %w", err)

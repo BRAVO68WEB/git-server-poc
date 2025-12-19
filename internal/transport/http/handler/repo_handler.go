@@ -651,6 +651,51 @@ func (h *RepoHandler) GetCommit(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
+// GetDiff handles GET /api/v1/repos/:owner/:repo/diff/:hash
+// Returns the patch content for a commit.
+func (h *RepoHandler) GetDiff(c *gin.Context) {
+	owner := c.Param("owner")
+	repoName := c.Param("repo")
+	hash := c.Param("hash")
+
+	repo, err := h.repoService.GetRepository(c.Request.Context(), owner, repoName)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+
+	// Access control: allow public reads; require auth for private repos
+	user := middleware.GetUserFromContext(c)
+	if repo.IsPrivate && (user == nil || (user.ID != repo.OwnerID && !user.IsAdmin)) {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":   "not_found",
+			"message": "Repository not found",
+		})
+		return
+	}
+
+	if hash == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "bad_request",
+			"message": "Commit hash is required",
+		})
+		return
+	}
+
+	diffResult, err := h.repoService.GetDiff(c.Request.Context(), repo, hash)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":   "not_found",
+			"message": "Diff not found",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	response := dto.DiffFromService(diffResult)
+	c.JSON(http.StatusOK, response)
+}
+
 // GetTree handles GET /api/repos/:owner/:repo/tree/:ref/*path
 func (h *RepoHandler) GetTree(c *gin.Context) {
 	owner := c.Param("owner")

@@ -237,6 +237,20 @@ func BlameFromService(lines []service.BlameLine, path, ref string) BlameResponse
 	}
 }
 
+// DiffResponse represents the diff output for a commit in API responses
+type DiffResponse struct {
+	CommitHash string `json:"commit_hash"`
+	Content    string `json:"content"`
+}
+
+// DiffFromService converts a service.DiffResult to DiffResponse DTO
+func DiffFromService(d *service.DiffResult) DiffResponse {
+	return DiffResponse{
+		CommitHash: d.CommitHash,
+		Content:    d.Content,
+	}
+}
+
 // FileContentFromService converts a service.FileContent to FileContentResponse DTO
 func FileContentFromService(f *service.FileContent, ref string) FileContentResponse {
 	content := string(f.Content)

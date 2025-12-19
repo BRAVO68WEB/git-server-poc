@@ -357,6 +357,11 @@ func (s *RepoService) GetBlame(ctx context.Context, repo *models.Repository, ref
 	return s.gitService.GetBlame(ctx, repo.GitPath, ref, filePath)
 }
 
+// GetDiff returns the diff (patch) for a specific commit in a repository
+func (s *RepoService) GetDiff(ctx context.Context, repo *models.Repository, commitHash string) (*service.DiffResult, error) {
+	return s.gitService.GetDiff(ctx, repo.GitPath, commitHash)
+}
+
 // ForkRepository creates a fork of a repository
 func (s *RepoService) ForkRepository(ctx context.Context, sourceRepoID, newOwnerID uuid.UUID, newName string) (*models.Repository, error) {
 	// Get source repository

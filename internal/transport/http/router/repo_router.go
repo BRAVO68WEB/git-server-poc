@@ -50,6 +50,7 @@ func (r *Router) repoRouter() {
 			// Commit routes
 			repoRoutes.GET("/commits", authMiddleware.Authenticate(), h.ListCommits)
 			repoRoutes.GET("/commits/:sha", authMiddleware.Authenticate(), h.GetCommit)
+			repoRoutes.GET("/diff/:hash", authMiddleware.Authenticate(), h.GetDiff)
 
 			// Tree/code structure routes
 			repoRoutes.GET("/tree/:ref", authMiddleware.Authenticate(), h.GetTree)

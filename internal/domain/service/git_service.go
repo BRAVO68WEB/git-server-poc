@@ -74,6 +74,12 @@ type BlameLine struct {
 	Content string
 }
 
+// DiffResult represents the diff output for a commit
+type DiffResult struct {
+	CommitHash string
+	Content    string
+}
+
 // GitService defines the interface for Git repository operations
 type GitService interface {
 	// Repository operations
@@ -169,4 +175,8 @@ type GitService interface {
 	// Blame operations
 	// GetBlame returns blame information for a file at a given ref
 	GetBlame(ctx context.Context, repoPath, ref, filePath string) ([]BlameLine, error)
+
+	// Diff operations
+	// GetDiff returns the diff (patch) for a specific commit
+	GetDiff(ctx context.Context, repoPath, commitHash string) (*DiffResult, error)
 }

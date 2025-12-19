@@ -594,7 +594,7 @@ export async function getBranches(
     }));
   } catch (error) {
     // Fallback to old API if new one fails
-    const url = `${API_URL}/api/repos/${owner}/${name}/branches`;
+    const url = `${API_URL}/api/v1/repos/${owner}/${name}/branches`;
     const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) throw new Error("Failed to fetch branches");
     return res.json();
@@ -606,8 +606,17 @@ export async function getDiff(
   name: string,
   hash: string,
 ): Promise<Diff> {
-  const url = `${API_URL}/api/repos/${owner}/${name}/diff/${hash}`;
-  const res = await fetch(url, { cache: "no-store" });
+  const token =
+    typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+  };
+  if (token) {
+    (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
+  }
+
+  const url = `${API_URL}/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/diff/${encodeURIComponent(hash)}`;
+  const res = await fetch(url, { cache: "no-store", headers });
   if (!res.ok) throw new Error("Failed to fetch diff");
   return res.json();
 }
