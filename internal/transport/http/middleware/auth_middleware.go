@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"encoding/base64"
 	"net/http"
 	"strings"
 
@@ -94,12 +95,14 @@ func (m *AuthMiddleware) RequireAdmin() gin.HandlerFunc {
 // extractAndValidateUser extracts and validates the user from the request
 // Supports:
 // - Bearer token (session JWT from OIDC or PAT)
+// - Basic Auth (username:password where password is a PAT for git operations)
 // - Query parameter access_token (for git operations)
 func (m *AuthMiddleware) extractAndValidateUser(c *gin.Context) *models.User {
 	ctx := c.Request.Context()
 
-	// Try Bearer token first (Authorization header)
 	authHeader := c.GetHeader("Authorization")
+
+	// Try Bearer token first (Authorization header)
 	if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
 		token := strings.TrimPrefix(authHeader, "Bearer ")
 
@@ -112,6 +115,15 @@ func (m *AuthMiddleware) extractAndValidateUser(c *gin.Context) *models.User {
 		// If session auth fails, try PAT (Personal Access Token) authentication
 		user, err = m.authService.AuthenticateToken(ctx, token)
 		if err == nil && user != nil {
+			return user
+		}
+	}
+
+	// Try Basic Auth (for Git HTTP protocol)
+	// Git sends credentials as Basic Auth with username and password/token
+	if authHeader != "" && strings.HasPrefix(authHeader, "Basic ") {
+		user := m.authenticateBasic(ctx, authHeader)
+		if user != nil {
 			return user
 		}
 	}
@@ -129,6 +141,40 @@ func (m *AuthMiddleware) extractAndValidateUser(c *gin.Context) *models.User {
 		if err == nil && user != nil {
 			return user
 		}
+	}
+
+	return nil
+}
+
+// authenticateBasic handles Basic authentication for Git HTTP protocol
+// The password field can be a Personal Access Token (PAT)
+func (m *AuthMiddleware) authenticateBasic(ctx context.Context, authHeader string) *models.User {
+	// Decode Basic auth header
+	encoded := strings.TrimPrefix(authHeader, "Basic ")
+	decoded, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil
+	}
+
+	// Split into username:password
+	credentials := strings.SplitN(string(decoded), ":", 2)
+	if len(credentials) != 2 {
+		return nil
+	}
+
+	password := credentials[1]
+
+	// For Git operations, the "password" is typically a Personal Access Token
+	// Try authenticating the password as a PAT
+	user, err := m.authService.AuthenticateToken(ctx, password)
+	if err == nil && user != nil {
+		return user
+	}
+
+	// Also try as a session token (for OIDC users)
+	user, err = m.authService.AuthenticateSession(ctx, password)
+	if err == nil && user != nil {
+		return user
 	}
 
 	return nil
