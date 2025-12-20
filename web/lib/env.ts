@@ -10,6 +10,8 @@ export const env = createEnv({
     NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
+    STASIS_SERVER_HOSTED_URL: z.url().default("http://localhost:8080"),
+    STASIS_SSH_HOST_NAME: z.string().default("localhost:2222"),
   },
 
   /**
@@ -27,6 +29,8 @@ export const env = createEnv({
   runtimeEnv: {
     NODE_ENV: process.env.NODE_ENV,
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+    STASIS_SERVER_HOSTED_URL: process.env.STASIS_SERVER_HOSTED_URL,
+    STASIS_SSH_HOST_NAME: process.env.STASIS_SSH_HOST_NAME,
   },
 
   /**

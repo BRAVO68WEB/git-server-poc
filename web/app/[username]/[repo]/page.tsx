@@ -1,6 +1,7 @@
-import { getRepository, listBranches, getTree } from "@/lib/api";
+import { listBranches, getTree } from "@/lib/api";
 import { RepoFileTree } from "@/components/RepoFileTree";
 import CloneCard from "@/components/clone-card";
+import { env } from "@/lib/env";
 
 export default async function RepoPage({
   params,
@@ -10,20 +11,8 @@ export default async function RepoPage({
   const { username, repo } = await params;
 
   // Fetch repository details including clone URLs
-  let httpUrl = `http://localhost:8080/${username}/${repo}.git`;
-  let sshUrl = `git@localhost:${username}/${repo}.git`;
-
-  try {
-    const repoData = await getRepository(username, repo);
-    if (repoData.clone_url) {
-      httpUrl = repoData.clone_url;
-    }
-    if (repoData.ssh_url) {
-      sshUrl = repoData.ssh_url;
-    }
-  } catch {
-    // Use default URLs if repo fetch fails
-  }
+  const httpUrl = `${env.STASIS_SERVER_HOSTED_URL}/${username}/${repo}.git`;
+  const sshUrl = `ssh://git@${env.STASIS_SSH_HOST_NAME}/${username}/${repo}.git`;
 
   let ref = "HEAD";
   const path = "";
