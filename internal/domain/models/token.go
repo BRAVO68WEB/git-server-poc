@@ -10,10 +10,13 @@ import (
 // User represents a user in the git server system
 type Token struct {
 	ID        uuid.UUID      `json:"id" gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
+	Name      string         `json:"name" gorm:"not null;size:255"`
 	UserID    uuid.UUID      `json:"user_id" gorm:"type:uuid;not null;index"`
-	Token     string         `json:"-" gorm:"not null;type:text"` // Hashed token
+	Token     string         `json:"-" gorm:"not null;type:text"`        // Hashed token
+	TokenHint string         `json:"token_hint" gorm:"not null;size:10"` // Last 5 chars of raw token
+	Scope     pq.StringArray `json:"scope" gorm:"type:text[]"`           // e.g., "owner/repo", "owner2/repo2"
 	ExpiresAt *time.Time     `json:"expires_at,omitempty"`
-	Scope     pq.StringArray `json:"scope" gorm:"type:text[]"` // e.g., "owner/repo", "owner2/repo2"
+	LastUsed  *time.Time     `json:"last_used,omitempty"`
 	CreatedAt time.Time      `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt time.Time      `json:"updated_at" gorm:"autoUpdateTime"`
 }

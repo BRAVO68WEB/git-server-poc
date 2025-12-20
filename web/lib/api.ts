@@ -30,33 +30,71 @@ import {
   AddSSHKeyRequest,
   AddSSHKeyResponse,
   ListSSHKeysResponse,
+  TokenInfo,
+  CreateTokenRequest,
+  CreateTokenResponse,
+  ListTokensResponse,
 } from "./types";
 import { env } from "./env";
 
 const API_URL = env.NEXT_PUBLIC_API_URL;
 
-// Token storage helpers (client-side only)
+// Cookie names
+export const AUTH_COOKIE_NAME = "auth_token";
+export const USER_COOKIE_NAME = "user_info";
+
+// Cookie helpers for client-side
+function getCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) {
+    const cookieValue = parts.pop()?.split(";").shift();
+    return cookieValue ? decodeURIComponent(cookieValue) : null;
+  }
+  return null;
+}
+
+function setCookie(name: string, value: string, days: number = 7): void {
+  if (typeof document === "undefined") return;
+  const expires = new Date();
+  expires.setTime(expires.getTime() + days * 24 * 60 * 60 * 1000);
+  // Set cookie with SameSite=Lax for security, path=/ for all routes
+  document.cookie = `${name}=${encodeURIComponent(value)};expires=${expires.toUTCString()};path=/;SameSite=Lax`;
+}
+
+function deleteCookie(name: string): void {
+  if (typeof document === "undefined") return;
+  document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;SameSite=Lax`;
+}
+
+// Token helpers using cookies
 function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("auth_token");
+  return getCookie(AUTH_COOKIE_NAME);
+}
+
+// Get token for server-side (async, uses next/headers)
+async function getServerToken(): Promise<string | null> {
+  try {
+    const { cookies } = await import("next/headers");
+    const cookieStore = await cookies();
+    return cookieStore.get(AUTH_COOKIE_NAME)?.value || null;
+  } catch {
+    return null;
+  }
 }
 
 function setToken(token: string): void {
-  if (typeof window !== "undefined") {
-    localStorage.setItem("auth_token", token);
-  }
+  setCookie(AUTH_COOKIE_NAME, token, 7); // 7 days expiry
 }
 
 function removeToken(): void {
-  if (typeof window !== "undefined") {
-    localStorage.removeItem("auth_token");
-  }
+  deleteCookie(AUTH_COOKIE_NAME);
 }
 
-// User info storage helpers (client-side only)
+// User info helpers using cookies
 function getUserInfo(): UserInfo | null {
-  if (typeof window === "undefined") return null;
-  const userInfoStr = localStorage.getItem("user_info");
+  const userInfoStr = getCookie(USER_COOKIE_NAME);
   if (!userInfoStr) return null;
   try {
     return JSON.parse(userInfoStr) as UserInfo;
@@ -66,23 +104,31 @@ function getUserInfo(): UserInfo | null {
 }
 
 function setUserInfo(user: UserInfo): void {
-  if (typeof window !== "undefined") {
-    localStorage.setItem("user_info", JSON.stringify(user));
-  }
+  setCookie(USER_COOKIE_NAME, JSON.stringify(user), 7);
 }
 
 function removeUserInfo(): void {
-  if (typeof window !== "undefined") {
-    localStorage.removeItem("user_info");
-  }
+  deleteCookie(USER_COOKIE_NAME);
 }
 
-// Request helper with authentication
+// Check if running on server
+function isServer(): boolean {
+  return typeof window === "undefined";
+}
+
+// Request helper with authentication (works on both client and server)
 async function apiRequest<T>(
   endpoint: string,
   options: RequestInit = {},
 ): Promise<T> {
-  const token = getToken();
+  // Get token - use server method on server, client method on client
+  let token: string | null = null;
+  if (isServer()) {
+    token = await getServerToken();
+  } else {
+    token = getToken();
+  }
+
   const headers: HeadersInit = {
     "Content-Type": "application/json",
     ...options.headers,
@@ -96,6 +142,7 @@ async function apiRequest<T>(
   const res = await fetch(`${API_URL}${endpoint}`, {
     ...options,
     headers,
+    credentials: "include", // Include cookies for cross-origin requests
     cache: "no-store",
   });
 
@@ -151,7 +198,7 @@ export function initiateOIDCLogin(): void {
 /**
  * Handle OIDC callback - exchange code for token
  * This is typically called from the callback page after the OIDC provider redirects back
- * The token is automatically stored in localStorage
+ * The token is automatically stored in cookies
  */
 export async function handleOIDCCallback(
   code: string,
@@ -163,12 +210,12 @@ export async function handleOIDCCallback(
     `/api/v1/auth/oidc/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
   );
 
-  // Store the session token
+  // Store the session token in cookie
   if (response.token) {
     setToken(response.token);
   }
 
-  // Store the user info
+  // Store the user info in cookie
   if (response.user) {
     setUserInfo(response.user);
   }
@@ -177,10 +224,17 @@ export async function handleOIDCCallback(
 }
 
 /**
- * Store the auth token (called from callback page)
+ * Store the auth token in cookie (called from callback page)
  */
 export function storeAuthToken(token: string): void {
   setToken(token);
+}
+
+/**
+ * Store user info in cookie
+ */
+export function storeUserInfo(user: UserInfo): void {
+  setUserInfo(user);
 }
 
 /**
@@ -220,7 +274,7 @@ export async function logout(
 }
 
 /**
- * Logout locally only (clear token without calling the API)
+ * Logout locally only (clear cookies without calling the API)
  */
 export function logoutLocal(): void {
   removeToken();
@@ -228,14 +282,7 @@ export function logoutLocal(): void {
 }
 
 /**
- * Store user info in localStorage
- */
-export function storeUserInfo(user: UserInfo): void {
-  setUserInfo(user);
-}
-
-/**
- * Get stored user info from localStorage (without API call)
+ * Get stored user info from cookie (without API call)
  */
 export function getStoredUserInfo(): UserInfo | null {
   return getUserInfo();
@@ -278,6 +325,29 @@ export async function getSSHKey(id: string): Promise<SSHKeyInfo> {
 
 export async function deleteSSHKey(id: string): Promise<SuccessResponse> {
   return apiRequest(`/api/v1/ssh-keys/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}
+
+// ============================================================================
+// Personal Access Token (PAT) API
+// ============================================================================
+
+export async function listTokens(): Promise<ListTokensResponse> {
+  return apiRequest("/api/v1/tokens");
+}
+
+export async function createToken(
+  data: CreateTokenRequest,
+): Promise<CreateTokenResponse> {
+  return apiRequest("/api/v1/tokens", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteToken(id: string): Promise<SuccessResponse> {
+  return apiRequest(`/api/v1/tokens/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
 }
@@ -439,6 +509,24 @@ export async function deleteTag(
 // These endpoints are not in the OpenAPI spec but are used by existing components
 // ============================================================================
 
+// Helper to get auth headers for legacy functions (async, works on both client and server)
+async function getLegacyAuthHeaders(): Promise<HeadersInit> {
+  let token: string | null = null;
+  if (isServer()) {
+    token = await getServerToken();
+  } else {
+    token = getToken();
+  }
+
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+  };
+  if (token) {
+    (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
 export async function getRepos(): Promise<Repo[]> {
   try {
     const response = await listPublicRepositories(1, 100);
@@ -475,21 +563,14 @@ export async function getTree(
   const ref = parts[0] || "HEAD";
   const path = parts.slice(1).join("/");
 
-  const token =
-    typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-  };
-  if (token) {
-    (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
-  }
+  const headers = await getLegacyAuthHeaders();
 
   let url = `${API_URL}/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/tree/${encodeURIComponent(ref)}`;
   if (path) {
     url += `/${path.split("/").map(encodeURIComponent).join("/")}`;
   }
 
-  const res = await fetch(url, { cache: "no-store", headers });
+  const res = await fetch(url, { cache: "no-store", headers, credentials: "include" });
   if (!res.ok) throw new Error("Failed to fetch tree");
 
   const data: TreeResponse = await res.json();
@@ -517,18 +598,11 @@ export async function getBlob(
   const ref = parts[0] || "HEAD";
   const path = parts.slice(1).join("/");
 
-  const token =
-    typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-  };
-  if (token) {
-    (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
-  }
+  const headers = await getLegacyAuthHeaders();
 
   const url = `${API_URL}/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/blob/${encodeURIComponent(ref)}/${path.split("/").map(encodeURIComponent).join("/")}`;
 
-  const res = await fetch(url, { cache: "no-store", headers });
+  const res = await fetch(url, { cache: "no-store", headers, credentials: "include" });
   if (!res.ok) throw new Error("Failed to fetch blob");
 
   const data: FileContentResponse = await res.json();
@@ -554,14 +628,7 @@ export async function getCommits(
   const ref = parts[0] || "HEAD";
   const path = parts.slice(1).join("/");
 
-  const token =
-    typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-  };
-  if (token) {
-    (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
-  }
+  const headers = await getLegacyAuthHeaders();
 
   const params = new URLSearchParams({
     ref: ref,
@@ -571,7 +638,7 @@ export async function getCommits(
 
   const url = `${API_URL}/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/commits?${params}`;
 
-  const res = await fetch(url, { cache: "no-store", headers });
+  const res = await fetch(url, { cache: "no-store", headers, credentials: "include" });
   if (!res.ok) throw new Error("Failed to fetch commits");
 
   const data: CommitListResponse = await res.json();
@@ -594,8 +661,9 @@ export async function getBranches(
     }));
   } catch (error) {
     // Fallback to old API if new one fails
+    const headers = await getLegacyAuthHeaders();
     const url = `${API_URL}/api/v1/repos/${owner}/${name}/branches`;
-    const res = await fetch(url, { cache: "no-store" });
+    const res = await fetch(url, { cache: "no-store", headers, credentials: "include" });
     if (!res.ok) throw new Error("Failed to fetch branches");
     return res.json();
   }
@@ -606,17 +674,10 @@ export async function getDiff(
   name: string,
   hash: string,
 ): Promise<Diff> {
-  const token =
-    typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-  };
-  if (token) {
-    (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
-  }
+  const headers = await getLegacyAuthHeaders();
 
   const url = `${API_URL}/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/diff/${encodeURIComponent(hash)}`;
-  const res = await fetch(url, { cache: "no-store", headers });
+  const res = await fetch(url, { cache: "no-store", headers, credentials: "include" });
   if (!res.ok) throw new Error("Failed to fetch diff");
   return res.json();
 }
@@ -632,18 +693,11 @@ export async function getBlame(
   const ref = parts[0] || "HEAD";
   const path = parts.slice(1).join("/");
 
-  const token =
-    typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-  };
-  if (token) {
-    (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
-  }
+  const headers = await getLegacyAuthHeaders();
 
   const url = `${API_URL}/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/blame/${encodeURIComponent(ref)}/${path.split("/").map(encodeURIComponent).join("/")}`;
 
-  const res = await fetch(url, { cache: "no-store", headers });
+  const res = await fetch(url, { cache: "no-store", headers, credentials: "include" });
   if (!res.ok) throw new Error("Failed to fetch blame");
 
   const data = await res.json();

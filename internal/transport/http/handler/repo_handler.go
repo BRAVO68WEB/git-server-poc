@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 
@@ -159,6 +160,7 @@ func (h *RepoHandler) GetRepository(c *gin.Context) {
 
 	// Check access for private repos
 	user := middleware.GetUserFromContext(c)
+	log.Println("Accessing repository:", owner+"/"+repoName, "User:", user)
 	if repo.IsPrivate {
 		if user == nil {
 			c.JSON(http.StatusNotFound, gin.H{

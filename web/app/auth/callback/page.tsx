@@ -1,19 +1,12 @@
 "use client";
 
 import { Suspense, useEffect, useState, useRef } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { storeAuthToken } from "@/lib/api";
-
-interface UserInfo {
-  ID: string;
-  Username: string;
-  Email: string;
-  IsAdmin: boolean;
-}
+import { storeAuthToken, storeUserInfo } from "@/lib/api";
+import { UserInfo } from "@/lib/types";
 
 function OIDCCallbackContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -54,9 +47,9 @@ function OIDCCallbackContent() {
           console.log("User from hash:", userBase64 ? "present" : "missing");
 
           if (tokenFromHash) {
-            // Store the token in localStorage
+            // Store the token in cookie
             storeAuthToken(tokenFromHash);
-            console.log("Token stored in localStorage");
+            console.log("Token stored in cookie");
 
             // If we have user info, store it as well
             if (userBase64) {
@@ -68,8 +61,8 @@ function OIDCCallbackContent() {
                   base64 + "=".repeat((4 - (base64.length % 4)) % 4);
                 const userJSON = atob(paddedBase64);
                 const userInfo: UserInfo = JSON.parse(userJSON);
-                localStorage.setItem("user_info", JSON.stringify(userInfo));
-                console.log("User info stored:", userInfo.Username);
+                storeUserInfo(userInfo);
+                console.log("User info stored:", userInfo.username);
               } catch (e) {
                 console.warn("Failed to parse user info from callback:", e);
                 // Continue anyway - the user info can be fetched later
@@ -121,7 +114,7 @@ function OIDCCallbackContent() {
 
               // Store user info if available
               if (data.user) {
-                localStorage.setItem("user_info", JSON.stringify(data.user));
+                storeUserInfo(data.user);
               }
 
               // Redirect to home page using window.location for a full page reload

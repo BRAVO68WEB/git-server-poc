@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"time"
 
 	"github.com/bravo68web/githut/internal/config"
 	"github.com/bravo68web/githut/internal/domain/models"
@@ -18,6 +19,7 @@ import (
 type AuthServiceImpl struct {
 	userRepo    repository.UserRepository
 	sshKeyRepo  repository.SSHKeyRepository
+	tokenRepo   repository.TokenRepository
 	oidcService *OIDCService
 	config      *config.OIDCConfig
 }
@@ -26,12 +28,14 @@ type AuthServiceImpl struct {
 func NewAuthService(
 	userRepo repository.UserRepository,
 	sshKeyRepo repository.SSHKeyRepository,
+	tokenRepo repository.TokenRepository,
 	oidcService *OIDCService,
 	oidcConfig *config.OIDCConfig,
 ) *AuthServiceImpl {
 	return &AuthServiceImpl{
 		userRepo:    userRepo,
 		sshKeyRepo:  sshKeyRepo,
+		tokenRepo:   tokenRepo,
 		oidcService: oidcService,
 		config:      oidcConfig,
 	}
@@ -39,15 +43,38 @@ func NewAuthService(
 
 // AuthenticateToken authenticates a user using an access token (PAT)
 func (s *AuthServiceImpl) AuthenticateToken(ctx context.Context, token string) (*models.User, error) {
-	// TODO: Implement PAT (Personal Access Token) authentication
-	// For now, this is a placeholder that will be implemented when PAT feature is added
-	// The token should be hashed and looked up in a tokens table
-
 	// Hash the token to look it up
-	_ = s.hashToken(token)
+	hashedToken := s.hashToken(token)
 
-	// Placeholder: PAT authentication not yet implemented
-	return nil, apperrors.Unauthorized("token authentication not implemented", apperrors.ErrInvalidCredentials)
+	// Find the token in the database
+	tokenRecord, err := s.tokenRepo.FindByHashedToken(ctx, hashedToken)
+	if err != nil {
+		if apperrors.IsNotFound(err) {
+			return nil, apperrors.Unauthorized("invalid token", apperrors.ErrInvalidCredentials)
+		}
+		return nil, fmt.Errorf("failed to find token: %w", err)
+	}
+
+	// Check if token is expired
+	if tokenRecord.ExpiresAt != nil && tokenRecord.ExpiresAt.Before(time.Now()) {
+		return nil, apperrors.Unauthorized("token has expired", apperrors.ErrInvalidCredentials)
+	}
+
+	// Update last used timestamp (fire and forget)
+	go func() {
+		_ = s.tokenRepo.UpdateLastUsed(context.Background(), tokenRecord.ID)
+	}()
+
+	// Get the user associated with this token
+	user, err := s.userRepo.FindByID(ctx, tokenRecord.UserID)
+	if err != nil {
+		if apperrors.IsNotFound(err) {
+			return nil, apperrors.Unauthorized("user not found for token", apperrors.ErrInvalidCredentials)
+		}
+		return nil, fmt.Errorf("failed to find user for token: %w", err)
+	}
+
+	return user, nil
 }
 
 // AuthenticateSSH authenticates a user using their SSH public key fingerprint

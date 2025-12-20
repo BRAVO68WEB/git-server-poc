@@ -9,6 +9,11 @@ const settingsNav = [
     href: "/settings/ssh-keys",
     description: "Manage SSH keys for Git access",
   },
+  {
+    name: "Access Tokens",
+    href: "/settings/tokens",
+    description: "Manage personal access tokens for API and Git access",
+  },
 ];
 
 export default function SettingsLayout({

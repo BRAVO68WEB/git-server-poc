@@ -21,6 +21,7 @@ type Dependencies struct {
 	RepoService   *service.RepoService
 	UserService   *service.UserService
 	SSHKeyService *service.SSHKeyService
+	TokenService  *service.TokenService
 	OIDCService   *service.OIDCService
 	Storage       domainservice.StorageService
 }
@@ -30,6 +31,7 @@ func LoadDependencies(cfg *config.Config, db *database.Database) Dependencies {
 	userRepo := repository.NewUserRepository(db.DB())
 	repoRepo := repository.NewRepoRepository(db.DB())
 	sshKeyRepo := repository.NewSSHKeyRepository(db.DB())
+	tokenRepo := repository.NewTokenRepository(db.DB())
 
 	// Initialize storage
 	storageFactory := storage.NewFactory(&cfg.Storage)
@@ -48,7 +50,7 @@ func LoadDependencies(cfg *config.Config, db *database.Database) Dependencies {
 	}
 
 	// Initialize services
-	authService := service.NewAuthService(userRepo, sshKeyRepo, oidcService, &cfg.OIDC)
+	authService := service.NewAuthService(userRepo, sshKeyRepo, tokenRepo, oidcService, &cfg.OIDC)
 	gitService := git.NewGitOperations(storageService)
 	repoService := service.NewRepoService(
 		repoRepo,
@@ -58,6 +60,7 @@ func LoadDependencies(cfg *config.Config, db *database.Database) Dependencies {
 	)
 	userService := service.NewUserService(userRepo)
 	sshKeyService := service.NewSSHKeyService(sshKeyRepo, userRepo)
+	tokenService := service.NewTokenService(tokenRepo, userRepo)
 
 	return Dependencies{
 		AuthService:   authService,
@@ -65,6 +68,7 @@ func LoadDependencies(cfg *config.Config, db *database.Database) Dependencies {
 		RepoService:   repoService,
 		UserService:   userService,
 		SSHKeyService: sshKeyService,
+		TokenService:  tokenService,
 		OIDCService:   oidcService,
 		Storage:       storageService,
 	}

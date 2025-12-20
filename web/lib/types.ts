@@ -228,3 +228,31 @@ export interface ListSSHKeysResponse {
   keys: SSHKeyInfo[];
   total: number;
 }
+
+// Personal Access Token types
+export interface TokenInfo {
+  id: string;
+  name: string;
+  token_hint: string;
+  scopes: string[];
+  expires_at?: string;
+  last_used_at?: string;
+  created_at: string;
+}
+
+export interface CreateTokenRequest {
+  name: string;
+  scopes?: string[];
+  expires_at?: string;
+}
+
+export interface CreateTokenResponse {
+  token: string;
+  token_info: TokenInfo;
+  message: string;
+}
+
+export interface ListTokensResponse {
+  tokens: TokenInfo[];
+  total: number;
+}
