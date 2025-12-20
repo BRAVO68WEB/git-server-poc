@@ -7,9 +7,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"github.com/bravo68web/githut/internal/application/service"
-	"github.com/bravo68web/githut/internal/transport/http/middleware"
-	apperrors "github.com/bravo68web/githut/pkg/errors"
+	"github.com/bravo68web/stasis/internal/application/dto"
+	"github.com/bravo68web/stasis/internal/application/service"
+	"github.com/bravo68web/stasis/internal/transport/http/middleware"
+	apperrors "github.com/bravo68web/stasis/pkg/errors"
 )
 
 // TokenHandler handles personal access token HTTP requests
@@ -24,25 +25,6 @@ func NewTokenHandler(tokenService *service.TokenService) *TokenHandler {
 	}
 }
 
-// CreateTokenRequest represents the request body for creating a token
-type CreateTokenRequest struct {
-	Name      string   `json:"name" binding:"required,min=1,max=255"`
-	Scopes    []string `json:"scopes"`     // optional, empty = all repos
-	ExpiresIn *int     `json:"expires_in"` // optional, days until expiration
-}
-
-// TokenResponse represents a token in API responses
-type TokenResponse struct {
-	ID        uuid.UUID  `json:"id"`
-	Name      string     `json:"name"`
-	Token     string     `json:"token,omitempty"`      // Only returned on creation
-	TokenHint string     `json:"token_hint,omitempty"` // Redacted token hint
-	Scopes    []string   `json:"scopes"`
-	ExpiresAt *time.Time `json:"expires_at,omitempty"`
-	LastUsed  *time.Time `json:"last_used_at,omitempty"` // Match frontend naming
-	CreatedAt time.Time  `json:"created_at"`
-}
-
 // CreateToken handles POST /api/v1/tokens
 func (h *TokenHandler) CreateToken(c *gin.Context) {
 	user := middleware.GetUserFromContext(c)
@@ -54,7 +36,7 @@ func (h *TokenHandler) CreateToken(c *gin.Context) {
 		return
 	}
 
-	var req CreateTokenRequest
+	var req dto.CreateTokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   "bad_request",
@@ -86,10 +68,9 @@ func (h *TokenHandler) CreateToken(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{
 		"token":   resp.RawToken,
 		"message": "Token created successfully",
-		"token_info": TokenResponse{
+		"token_info": dto.TokenInfo{
 			ID:        resp.Token.ID,
 			Name:      resp.Token.Name,
-			TokenHint: resp.Token.TokenHint,
 			Scopes:    resp.Token.Scope,
 			ExpiresAt: resp.Token.ExpiresAt,
 			CreatedAt: resp.Token.CreatedAt,
@@ -114,22 +95,11 @@ func (h *TokenHandler) ListTokens(c *gin.Context) {
 		return
 	}
 
-	tokenResponses := make([]TokenResponse, len(tokens))
-	for i, token := range tokens {
-		tokenResponses[i] = TokenResponse{
-			ID:        token.ID,
-			Name:      token.Name,
-			TokenHint: token.TokenHint,
-			Scopes:    token.Scope,
-			ExpiresAt: token.ExpiresAt,
-			LastUsed:  token.LastUsed,
-			CreatedAt: token.CreatedAt,
-		}
-	}
+	tokenInfoList := dto.TokenInfoFromModels(tokens)
 
 	c.JSON(http.StatusOK, gin.H{
-		"tokens": tokenResponses,
-		"total":  len(tokens),
+		"tokens": tokenInfoList,
+		"total":  len(tokenInfoList),
 	})
 }
 

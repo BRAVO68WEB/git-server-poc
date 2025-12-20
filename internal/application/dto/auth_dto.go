@@ -3,6 +3,7 @@ package dto
 import (
 	"time"
 
+	"github.com/bravo68web/stasis/internal/domain/models"
 	"github.com/google/uuid"
 )
 
@@ -27,20 +28,21 @@ type OIDCConfigResponse struct {
 	OIDCInitialized bool `json:"oidc_initialized"`
 }
 
-// CreateTokenRequest represents a request to create an access token
+// CreateTokenRequest represents the request body for creating a token
 type CreateTokenRequest struct {
-	Name      string   `json:"name" binding:"required"`
-	Scopes    []string `json:"scopes"`
-	ExpiresAt *string  `json:"expires_at"` // RFC3339 format
+	Name      string   `json:"name" binding:"required,min=1,max=255"`
+	Scopes    []string `json:"scopes"`     // optional, empty = all repos
+	ExpiresIn *int     `json:"expires_in"` // optional, days until expiration
 }
 
-// CreateTokenResponse represents a response after creating a token
-type CreateTokenResponse struct {
+// TokenResponse represents a token in API responses
+type TokenResponse struct {
 	ID        uuid.UUID  `json:"id"`
 	Name      string     `json:"name"`
-	Token     string     `json:"token"` // Only returned once on creation
+	Token     string     `json:"token,omitempty"` // Only returned on creation
 	Scopes    []string   `json:"scopes"`
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	LastUsed  *time.Time `json:"last_used,omitempty"`
 	CreatedAt time.Time  `json:"created_at"`
 }
 
@@ -50,6 +52,7 @@ type TokenInfo struct {
 	Name      string     `json:"name"`
 	Scopes    []string   `json:"scopes"`
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	LastUsed  *time.Time `json:"last_used,omitempty"`
 	CreatedAt time.Time  `json:"created_at"`
 }
 
@@ -57,6 +60,23 @@ type TokenInfo struct {
 type ListTokensResponse struct {
 	Tokens []TokenInfo `json:"tokens"`
 	Total  int         `json:"total"`
+}
+
+func TokenInfoFromModels(tokens []*models.Token) []TokenInfo {
+	var tokenInfo []TokenInfo
+
+	for _, t := range tokens {
+		tokenInfo = append(tokenInfo, TokenInfo{
+			ID:        t.ID,
+			Name:      t.Name,
+			Scopes:    []string(t.Scope),
+			ExpiresAt: t.ExpiresAt,
+			LastUsed:  t.LastUsed,
+			CreatedAt: t.CreatedAt,
+		})
+	}
+
+	return tokenInfo
 }
 
 // AddSSHKeyRequest represents a request to add an SSH key

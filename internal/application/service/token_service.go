@@ -6,14 +6,15 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 
-	"github.com/bravo68web/githut/internal/domain/models"
-	"github.com/bravo68web/githut/internal/domain/repository"
-	apperrors "github.com/bravo68web/githut/pkg/errors"
+	"github.com/bravo68web/stasis/internal/domain/models"
+	"github.com/bravo68web/stasis/internal/domain/repository"
+	apperrors "github.com/bravo68web/stasis/pkg/errors"
 )
 
 // TokenService handles personal access token operations
@@ -63,15 +64,11 @@ func (s *TokenService) CreateToken(ctx context.Context, req CreateTokenRequest) 
 	// Hash the token for storage
 	hashedToken := hashToken(rawToken)
 
-	// Store last 5 characters as hint
-	tokenHint := rawToken[len(rawToken)-5:]
-
 	// Create the token record
 	token := &models.Token{
 		Name:      req.Name,
 		UserID:    req.UserID,
 		Token:     hashedToken,
-		TokenHint: tokenHint,
 		Scope:     pq.StringArray(req.Scopes),
 		ExpiresAt: req.ExpiresAt,
 	}
@@ -156,13 +153,7 @@ func (s *TokenService) CheckTokenScope(token *models.Token, ownerRepo string) bo
 	}
 
 	// Check if the owner/repo is in the scope list
-	for _, scope := range token.Scope {
-		if scope == ownerRepo {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(token.Scope, ownerRepo)
 }
 
 // generateRawToken generates a new token in format Sx{32 random hex chars}
@@ -178,12 +169,4 @@ func generateRawToken() (string, error) {
 func hashToken(token string) string {
 	hash := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(hash[:])
-}
-
-// RedactToken returns a redacted version of the token showing only the last 5 chars
-func RedactToken(rawToken string) string {
-	if len(rawToken) <= 5 {
-		return "*****"
-	}
-	return "Sx..." + rawToken[len(rawToken)-5:]
 }
