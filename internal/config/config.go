@@ -36,11 +36,19 @@ type DatabaseConfig struct {
 	SSLMode  string `mapstructure:"sslmode"`
 }
 
-// DSN returns the database connection string
+// DSN returns the database connection string (libpq format)
 func (d *DatabaseConfig) DSN() string {
 	return fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
 		d.Host, d.Port, d.User, d.Password, d.DBName, d.SSLMode,
+	)
+}
+
+// URL returns the database connection URL (for tools like Atlas)
+func (d *DatabaseConfig) URL() string {
+	return fmt.Sprintf(
+		"postgres://%s:%s@%s:%d/%s?sslmode=%s",
+		d.User, d.Password, d.Host, d.Port, d.DBName, d.SSLMode,
 	)
 }
 

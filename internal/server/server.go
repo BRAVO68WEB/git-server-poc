@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"os"
 
 	"github.com/gin-gonic/gin"
@@ -34,6 +35,10 @@ func New() *Server {
 	if err != nil {
 		panic(err)
 	}
+
+	// Run auto-migrations on startup
+	migrator := database.NewMigrator(db)
+	migrator.MustApplyMigrations(context.Background())
 
 	// Set Gin mode based on configuration
 	if cfg.Server.Mode == "release" {

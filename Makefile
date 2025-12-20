@@ -83,17 +83,34 @@ watch-cli:
 		    fi; \
 		fi
 
-## gen-migrations: checks the diff and generate new migration files
+## gen-migrations: checks the diff and generate new migration files (use: make gen-migrations name=<migration_name>)
 .PHONY: gen-migrations
 gen-migrations:
-	@echo "Generating migrations..."
-	@atlas migrate diff --env gorm
+	@if [ -z "$(name)" ]; then \
+		echo "Usage: make gen-migrations name=<migration_name>"; \
+		echo "Example: make gen-migrations name=add_user_avatar"; \
+		exit 1; \
+	fi
+	@echo "Generating migration: $(name)..."
+	@atlas migrate diff $(name) --env gorm
 
 ## inspect-migration: inspects the current database models and prints it out
 .PHONY: inspect-migration
 inspect-migration:
 	@echo "Inspecting migrations..."
 	@atlas schema inspect --env gorm --url "env://src"
+
+## migration-status: shows the status of migrations against a database
+.PHONY: migration-status
+migration-status:
+	@echo "Checking migration status..."
+	@atlas migrate status --env gorm --url "$(url)"
+
+## migration-hash: rehash migration files (use when migration files are modified)
+.PHONY: migration-hash
+migration-hash:
+	@echo "Rehashing migrations..."
+	@atlas migrate hash --env gorm
 
 ## help: print this help message
 .PHONY: help
