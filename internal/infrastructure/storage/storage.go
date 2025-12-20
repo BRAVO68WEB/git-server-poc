@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/bravo68web/githut/internal/config"
-	"github.com/bravo68web/githut/internal/domain/service"
+	"github.com/bravo68web/stasis/internal/config"
+	"github.com/bravo68web/stasis/internal/domain/service"
 )
 
 // StorageType represents the type of storage backend

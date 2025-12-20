@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 
-	"github.com/bravo68web/githut/internal/domain/models"
+	"github.com/bravo68web/stasis/internal/domain/models"
 )
 
 // AuthService defines the interface for authentication and authorization operations

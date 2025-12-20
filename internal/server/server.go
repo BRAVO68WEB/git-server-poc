@@ -5,8 +5,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/bravo68web/githut/internal/config"
-	"github.com/bravo68web/githut/internal/infrastructure/database"
+	"github.com/bravo68web/stasis/internal/config"
+	"github.com/bravo68web/stasis/internal/infrastructure/database"
 )
 
 type Server struct {

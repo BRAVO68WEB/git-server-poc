@@ -76,8 +76,22 @@ type BlameLine struct {
 
 // DiffResult represents the diff output for a commit
 type DiffResult struct {
-	CommitHash string
-	Content    string
+	CommitHash   string
+	Content      string
+	FilesChanged int
+	Additions    int
+	Deletions    int
+	Files        []DiffFile
+}
+
+// DiffFile represents a single file's diff information
+type DiffFile struct {
+	OldPath   string
+	NewPath   string
+	Status    string // "added", "deleted", "modified", "renamed"
+	Additions int
+	Deletions int
+	Patch     string
 }
 
 // GitService defines the interface for Git repository operations

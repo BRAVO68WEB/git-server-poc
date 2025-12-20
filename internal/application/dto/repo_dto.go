@@ -4,8 +4,8 @@ import (
 	"encoding/base64"
 	"time"
 
-	"github.com/bravo68web/githut/internal/domain/models"
-	"github.com/bravo68web/githut/internal/domain/service"
+	"github.com/bravo68web/stasis/internal/domain/models"
+	"github.com/bravo68web/stasis/internal/domain/service"
 	"github.com/google/uuid"
 )
 
@@ -239,15 +239,45 @@ func BlameFromService(lines []service.BlameLine, path, ref string) BlameResponse
 
 // DiffResponse represents the diff output for a commit in API responses
 type DiffResponse struct {
-	CommitHash string `json:"commit_hash"`
-	Content    string `json:"content"`
+	CommitHash   string         `json:"commit_hash"`
+	Content      string         `json:"content"`
+	FilesChanged int            `json:"files_changed"`
+	Additions    int            `json:"additions"`
+	Deletions    int            `json:"deletions"`
+	Files        []DiffFileInfo `json:"files,omitempty"`
+}
+
+// DiffFileInfo represents a single file's diff information in API responses
+type DiffFileInfo struct {
+	OldPath   string `json:"old_path"`
+	NewPath   string `json:"new_path"`
+	Status    string `json:"status"` // "added", "deleted", "modified", "renamed"
+	Additions int    `json:"additions"`
+	Deletions int    `json:"deletions"`
+	Patch     string `json:"patch,omitempty"`
 }
 
 // DiffFromService converts a service.DiffResult to DiffResponse DTO
 func DiffFromService(d *service.DiffResult) DiffResponse {
+	var files []DiffFileInfo
+	for _, f := range d.Files {
+		files = append(files, DiffFileInfo{
+			OldPath:   f.OldPath,
+			NewPath:   f.NewPath,
+			Status:    f.Status,
+			Additions: f.Additions,
+			Deletions: f.Deletions,
+			Patch:     f.Patch,
+		})
+	}
+
 	return DiffResponse{
-		CommitHash: d.CommitHash,
-		Content:    d.Content,
+		CommitHash:   d.CommitHash,
+		Content:      d.Content,
+		FilesChanged: d.FilesChanged,
+		Additions:    d.Additions,
+		Deletions:    d.Deletions,
+		Files:        files,
 	}
 }
 

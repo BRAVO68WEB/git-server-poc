@@ -19,7 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
-	"github.com/bravo68web/githut/internal/domain/service"
+	"github.com/bravo68web/stasis/internal/domain/service"
 )
 
 // S3Storage implements the StorageService interface using AWS S3

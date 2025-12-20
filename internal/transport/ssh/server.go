@@ -13,11 +13,11 @@ import (
 	"github.com/charmbracelet/wish/logging"
 	gossh "golang.org/x/crypto/ssh"
 
-	"github.com/bravo68web/githut/internal/application/service"
-	"github.com/bravo68web/githut/internal/config"
-	"github.com/bravo68web/githut/internal/domain/models"
-	domainservice "github.com/bravo68web/githut/internal/domain/service"
-	"github.com/bravo68web/githut/internal/infrastructure/git"
+	"github.com/bravo68web/stasis/internal/application/service"
+	"github.com/bravo68web/stasis/internal/config"
+	"github.com/bravo68web/stasis/internal/domain/models"
+	domainservice "github.com/bravo68web/stasis/internal/domain/service"
+	"github.com/bravo68web/stasis/internal/infrastructure/git"
 )
 
 // Server represents the SSH server for Git operations

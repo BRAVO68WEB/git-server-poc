@@ -9,9 +9,9 @@ server:
 database:
   host: "localhost"
   port: 5432
-  user: "gitserver"
+  user: "stasis"
   password: "password"
-  dbname: "gitserver"
+  dbname: "stasis"
   sslmode: "disable"
 
 storage:
@@ -38,7 +38,7 @@ oidc:
   issuer_url: ""
   # OAuth2 client ID from your OIDC provider
   client_id: ""
-  # OAuth2 client secret from your OIDC provider (use env var GITSERVER_OIDC_CLIENT_SECRET in production)
+  # OAuth2 client secret from your OIDC provider (use env var STASIS_OIDC_CLIENT_SECRET in production)
   client_secret: ""
   # Callback URL where the OIDC provider will redirect after authentication
   redirect_url: "http://localhost:8080/api/v1/auth/oidc/callback"
@@ -47,7 +47,7 @@ oidc:
     - "openid"
     - "profile"
     - "email"
-  # Secret for signing session JWTs (use env var GITSERVER_OIDC_JWT_SECRET in production)
+  # Secret for signing session JWTs (use env var STASIS_OIDC_JWT_SECRET in production)
   jwt_secret: "change-this-secret-in-production"
 
 # OPA (Open Policy Agent) Authorization
@@ -56,8 +56,8 @@ opa:
   enabled: false
   # Path to the Rego policy file
   policy_path: "./policies/rbac.rego"
-  # OPA query to evaluate (default: data.gitserver.authz.allow)
-  query: "data.gitserver.authz.allow"
+  # OPA query to evaluate (default: data.stasis.authz.allow)
+  query: "data.stasis.authz.allow"
 
 logging:
   level: "info"  # debug, info, warn, error

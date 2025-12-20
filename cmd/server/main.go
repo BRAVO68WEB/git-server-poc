@@ -12,10 +12,10 @@ import (
 
 	"github.com/charmbracelet/ssh"
 
-	"github.com/bravo68web/githut/internal/injectable"
-	"github.com/bravo68web/githut/internal/server"
-	"github.com/bravo68web/githut/internal/transport/http/router"
-	sshserver "github.com/bravo68web/githut/internal/transport/ssh"
+	"github.com/bravo68web/stasis/internal/injectable"
+	"github.com/bravo68web/stasis/internal/server"
+	"github.com/bravo68web/stasis/internal/transport/http/router"
+	sshserver "github.com/bravo68web/stasis/internal/transport/ssh"
 )
 
 func main() {

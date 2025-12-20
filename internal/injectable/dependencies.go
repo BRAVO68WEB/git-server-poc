@@ -4,13 +4,13 @@ import (
 	"context"
 	"log"
 
-	"github.com/bravo68web/githut/internal/application/service"
-	"github.com/bravo68web/githut/internal/config"
-	domainservice "github.com/bravo68web/githut/internal/domain/service"
-	"github.com/bravo68web/githut/internal/infrastructure/database"
-	"github.com/bravo68web/githut/internal/infrastructure/git"
-	"github.com/bravo68web/githut/internal/infrastructure/repository"
-	"github.com/bravo68web/githut/internal/infrastructure/storage"
+	"github.com/bravo68web/stasis/internal/application/service"
+	"github.com/bravo68web/stasis/internal/config"
+	domainservice "github.com/bravo68web/stasis/internal/domain/service"
+	"github.com/bravo68web/stasis/internal/infrastructure/database"
+	"github.com/bravo68web/stasis/internal/infrastructure/git"
+	"github.com/bravo68web/stasis/internal/infrastructure/repository"
+	"github.com/bravo68web/stasis/internal/infrastructure/storage"
 )
 
 // Dependencies holds all the dependencies required by the router

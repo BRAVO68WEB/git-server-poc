@@ -10,9 +10,9 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/crypto/ssh"
 
-	"github.com/bravo68web/githut/internal/domain/models"
-	"github.com/bravo68web/githut/internal/domain/repository"
-	apperrors "github.com/bravo68web/githut/pkg/errors"
+	"github.com/bravo68web/stasis/internal/domain/models"
+	"github.com/bravo68web/stasis/internal/domain/repository"
+	apperrors "github.com/bravo68web/stasis/pkg/errors"
 )
 
 // SSHKeyService handles SSH key operations

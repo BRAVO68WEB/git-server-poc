@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/bravo68web/githut/internal/config"
-	"github.com/bravo68web/githut/internal/domain/models"
-	"github.com/bravo68web/githut/internal/domain/repository"
-	"github.com/bravo68web/githut/internal/domain/service"
-	apperrors "github.com/bravo68web/githut/pkg/errors"
+	"github.com/bravo68web/stasis/internal/config"
+	"github.com/bravo68web/stasis/internal/domain/models"
+	"github.com/bravo68web/stasis/internal/domain/repository"
+	"github.com/bravo68web/stasis/internal/domain/service"
+	apperrors "github.com/bravo68web/stasis/pkg/errors"
 	"github.com/google/uuid"
 )
 
