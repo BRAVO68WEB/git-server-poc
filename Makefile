@@ -83,6 +83,18 @@ watch-cli:
 		    fi; \
 		fi
 
+## gen-migrations: checks the diff and generate new migration files
+.PHONY: gen-migrations
+gen-migrations:
+	@echo "Generating migrations..."
+	@atlas migrate diff --env gorm
+
+## inspect-migration: inspects the current database models and prints it out
+.PHONY: inspect-migration
+inspect-migration:
+	@echo "Inspecting migrations..."
+	@atlas schema inspect --env gorm --url "env://src"
+
 ## help: print this help message
 .PHONY: help
 help:

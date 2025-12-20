@@ -21,11 +21,6 @@ import (
 func main() {
 	s := server.New()
 
-	// Run database migrations (including OIDC migration)
-	if err := s.DB.RunMigrations(); err != nil {
-		log.Fatalf("Failed to run database migrations: %v", err)
-	}
-
 	// Create router and register routes
 	r := router.NewRouter(s)
 	r.RegisterRoutes()

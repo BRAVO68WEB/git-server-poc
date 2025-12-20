@@ -10,7 +10,6 @@ import (
 	"gorm.io/gorm/logger"
 
 	"github.com/bravo68web/stasis/internal/config"
-	"github.com/bravo68web/stasis/internal/domain/models"
 )
 
 // Database wraps the GORM database connection
@@ -84,19 +83,4 @@ func (d *Database) Close() error {
 		return fmt.Errorf("failed to get underlying SQL DB: %w", err)
 	}
 	return sqlDB.Close()
-}
-
-// AutoMigrate runs auto-migration for all models
-func (d *Database) AutoMigrate() error {
-	err := d.db.AutoMigrate(
-		&models.User{},
-		&models.Repository{},
-		&models.SSHKey{},
-		&models.Token{},
-	)
-	if err != nil {
-		return fmt.Errorf("failed to auto-migrate: %w", err)
-	}
-
-	return nil
 }
