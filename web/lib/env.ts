@@ -19,7 +19,7 @@ export const env = createEnv({
    * These are exposed to the client and must be prefixed with `NEXT_PUBLIC_`.
    */
   client: {
-    NEXT_PUBLIC_API_URL: z.url().default("http://localhost:8080"),
+    NEXT_PUBLIC_API_URL: z.string().default("http://localhost/api"),
   },
 
   /**

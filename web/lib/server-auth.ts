@@ -56,7 +56,16 @@ export async function serverApiRequest<T>(
   endpoint: string,
   options: RequestInit = {},
 ): Promise<T> {
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+  // Use NEXT_PUBLIC_API_URL if set, otherwise use default
+  // For server-side in Docker, replace localhost with nginx service name
+  // For client-side, http://localhost/api works fine (browser makes request to nginx)
+  let API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+  console.log("API_URL", API_URL);
+  
+  // If we're on the server side and URL contains localhost, use nginx service instead
+  if (typeof window === "undefined" && API_URL.includes("localhost")) {
+    API_URL = API_URL.replace("localhost", "nginx");
+  }
   const authHeaders = await getServerAuthHeaders();
 
   const res = await fetch(`${API_URL}${endpoint}`, {

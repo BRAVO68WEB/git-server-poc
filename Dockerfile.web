@@ -1,0 +1,36 @@
+# Dependencies stage
+FROM oven/bun AS deps
+
+WORKDIR /app
+
+# Copy package files
+COPY web/package.json web/bun.lock* web/package-lock.json* web/yarn.lock* web/pnpm-lock.yaml* ./
+
+# Install dependencies using available package manager
+RUN bun install
+
+# Build stage
+FROM oven/bun AS builder
+
+WORKDIR /app
+
+COPY --from=deps /app/bun.lock ./bun.lock
+COPY web/package.json ./package.json
+COPY web/ .
+
+# Set build-time environment variables
+ARG STASIS_SERVER_HOSTED_URL
+ENV STASIS_SERVER_HOSTED_URL=${STASIS_SERVER_HOSTED_URL}
+
+ARG STASIS_SSH_HOST_NAME
+ENV STASIS_SSH_HOST_NAME=${STASIS_SSH_HOST_NAME}
+
+# Build the application
+RUN bun run build
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s \
+    CMD wget -qO- http://localhost:3000 || exit 1
+
+CMD ["bun", "run", "start"]

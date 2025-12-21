@@ -37,7 +37,18 @@ import {
 } from "./types";
 import { env } from "./env";
 
-const API_URL = env.NEXT_PUBLIC_API_URL;
+// Get API URL - handle server vs client differently
+function getApiUrl(): string {
+  const baseUrl = env.NEXT_PUBLIC_API_URL;
+  console.log("baseUrl", baseUrl);
+
+  // If we're on the server side (SSR) and URL contains localhost, use nginx service
+  if (typeof window === "undefined" && baseUrl.includes("localhost")) {
+    return baseUrl.replace("localhost", "nginx");
+  }
+  
+  return baseUrl;
+}
 
 // Cookie names
 export const AUTH_COOKIE_NAME = "auth_token";
@@ -139,7 +150,7 @@ async function apiRequest<T>(
     (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_URL}${endpoint}`, {
+  const res = await fetch(`${getApiUrl()}${endpoint}`, {
     ...options,
     headers,
     credentials: "include", // Include cookies for cross-origin requests
@@ -174,7 +185,7 @@ export async function getHealth(): Promise<{ name: string; status: string }> {
  * Returns whether OIDC is enabled and initialized
  */
 export async function getOIDCConfig(): Promise<OIDCConfigResponse> {
-  return apiRequest("/api/v1/auth/oidc/config");
+  return apiRequest("/v1/auth/oidc/config");
 }
 
 /**
@@ -182,7 +193,7 @@ export async function getOIDCConfig(): Promise<OIDCConfigResponse> {
  * The user should be redirected to this URL to start the OIDC flow
  */
 export function getOIDCLoginURL(): string {
-  return `${API_URL}/api/v1/auth/oidc/login`;
+  return `${getApiUrl()}/v1/auth/oidc/login`;
 }
 
 /**
@@ -207,7 +218,7 @@ export async function handleOIDCCallback(
   // The callback is handled server-side, but we need to process the response
   // This function is called after the redirect, when we have the token in the response
   const response = await apiRequest<OIDCCallbackResponse>(
-    `/api/v1/auth/oidc/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
+    `/v1/auth/oidc/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
   );
 
   // Store the session token in cookie
@@ -241,7 +252,7 @@ export function storeUserInfo(user: UserInfo): void {
  * Get the current authenticated user
  */
 export async function getCurrentUser(): Promise<UserInfo> {
-  return apiRequest("/api/v1/auth/me");
+  return apiRequest("/v1/auth/me");
 }
 
 /**
@@ -256,7 +267,7 @@ export async function logout(
       ? `?redirect_uri=${encodeURIComponent(redirectUri)}`
       : "";
     const response = await apiRequest<OIDCLogoutResponse>(
-      `/api/v1/auth/oidc/logout${params}`,
+      `/v1/auth/oidc/logout${params}`,
       { method: "POST" },
     );
 
@@ -307,24 +318,24 @@ export function getAuthToken(): string | null {
 // ============================================================================
 
 export async function listSSHKeys(): Promise<ListSSHKeysResponse> {
-  return apiRequest("/api/v1/ssh-keys");
+  return apiRequest("/v1/ssh-keys");
 }
 
 export async function addSSHKey(
   data: AddSSHKeyRequest,
 ): Promise<AddSSHKeyResponse> {
-  return apiRequest("/api/v1/ssh-keys", {
+  return apiRequest("/v1/ssh-keys", {
     method: "POST",
     body: JSON.stringify(data),
   });
 }
 
 export async function getSSHKey(id: string): Promise<SSHKeyInfo> {
-  return apiRequest(`/api/v1/ssh-keys/${encodeURIComponent(id)}`);
+  return apiRequest(`/v1/ssh-keys/${encodeURIComponent(id)}`);
 }
 
 export async function deleteSSHKey(id: string): Promise<SuccessResponse> {
-  return apiRequest(`/api/v1/ssh-keys/${encodeURIComponent(id)}`, {
+  return apiRequest(`/v1/ssh-keys/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
 }
@@ -334,20 +345,20 @@ export async function deleteSSHKey(id: string): Promise<SuccessResponse> {
 // ============================================================================
 
 export async function listTokens(): Promise<ListTokensResponse> {
-  return apiRequest("/api/v1/tokens");
+  return apiRequest("/v1/tokens");
 }
 
 export async function createToken(
   data: CreateTokenRequest,
 ): Promise<CreateTokenResponse> {
-  return apiRequest("/api/v1/tokens", {
+  return apiRequest("/v1/tokens", {
     method: "POST",
     body: JSON.stringify(data),
   });
 }
 
 export async function deleteToken(id: string): Promise<SuccessResponse> {
-  return apiRequest(`/api/v1/tokens/${encodeURIComponent(id)}`, {
+  return apiRequest(`/v1/tokens/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
 }
@@ -357,13 +368,13 @@ export async function deleteToken(id: string): Promise<SuccessResponse> {
 // ============================================================================
 
 export async function listUserRepositories(): Promise<RepoListResponse> {
-  return apiRequest("/api/v1/repos");
+  return apiRequest("/v1/repos");
 }
 
 export async function createRepository(
   data: CreateRepoRequest,
 ): Promise<RepoResponse> {
-  return apiRequest("/api/v1/repos", {
+  return apiRequest("/v1/repos", {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -377,7 +388,7 @@ export async function listPublicRepositories(
     page: page.toString(),
     per_page: perPage.toString(),
   });
-  return apiRequest(`/api/v1/repos/public?${params}`);
+  return apiRequest(`/v1/repos/public?${params}`);
 }
 
 export async function getRepository(
@@ -385,7 +396,7 @@ export async function getRepository(
   repo: string,
 ): Promise<RepoResponse> {
   return apiRequest(
-    `/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`,
+    `/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`,
   );
 }
 
@@ -395,7 +406,7 @@ export async function updateRepository(
   data: UpdateRepoRequest,
 ): Promise<RepoResponse> {
   return apiRequest(
-    `/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`,
+    `/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`,
     {
       method: "PATCH",
       body: JSON.stringify(data),
@@ -408,7 +419,7 @@ export async function deleteRepository(
   repo: string,
 ): Promise<SuccessResponse> {
   return apiRequest(
-    `/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`,
+    `/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`,
     {
       method: "DELETE",
     },
@@ -420,7 +431,7 @@ export async function getRepositoryStats(
   repo: string,
 ): Promise<RepoStats> {
   return apiRequest(
-    `/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/stats`,
+    `/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/stats`,
   );
 }
 
@@ -433,7 +444,7 @@ export async function listBranches(
   repo: string,
 ): Promise<BranchListResponse> {
   return apiRequest(
-    `/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/branches`,
+    `/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/branches`,
   );
 }
 
@@ -443,7 +454,7 @@ export async function createBranch(
   data: BranchRequest,
 ): Promise<{ message: string; branch: string }> {
   return apiRequest(
-    `/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/branches`,
+    `/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/branches`,
     {
       method: "POST",
       body: JSON.stringify(data),
@@ -457,7 +468,7 @@ export async function deleteBranch(
   branch: string,
 ): Promise<SuccessResponse> {
   return apiRequest(
-    `/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/branches/${encodeURIComponent(branch)}`,
+    `/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/branches/${encodeURIComponent(branch)}`,
     {
       method: "DELETE",
     },
@@ -473,7 +484,7 @@ export async function listTags(
   repo: string,
 ): Promise<TagListResponse> {
   return apiRequest(
-    `/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/tags`,
+    `/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/tags`,
   );
 }
 
@@ -483,7 +494,7 @@ export async function createTag(
   data: TagRequest,
 ): Promise<{ message: string; tag: string }> {
   return apiRequest(
-    `/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/tags`,
+    `/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/tags`,
     {
       method: "POST",
       body: JSON.stringify(data),
@@ -497,7 +508,7 @@ export async function deleteTag(
   tag: string,
 ): Promise<SuccessResponse> {
   return apiRequest(
-    `/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/tags/${encodeURIComponent(tag)}`,
+    `/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/tags/${encodeURIComponent(tag)}`,
     {
       method: "DELETE",
     },
@@ -565,7 +576,7 @@ export async function getTree(
 
   const headers = await getLegacyAuthHeaders();
 
-  let url = `${API_URL}/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/tree/${encodeURIComponent(ref)}`;
+    let url = `${getApiUrl()}/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/tree/${encodeURIComponent(ref)}`;
   if (path) {
     url += `/${path.split("/").map(encodeURIComponent).join("/")}`;
   }
@@ -600,7 +611,7 @@ export async function getBlob(
 
   const headers = await getLegacyAuthHeaders();
 
-  const url = `${API_URL}/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/blob/${encodeURIComponent(ref)}/${path.split("/").map(encodeURIComponent).join("/")}`;
+  const url = `${getApiUrl()}/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/blob/${encodeURIComponent(ref)}/${path.split("/").map(encodeURIComponent).join("/")}`;
 
   const res = await fetch(url, { cache: "no-store", headers, credentials: "include" });
   if (!res.ok) throw new Error("Failed to fetch blob");
@@ -636,7 +647,7 @@ export async function getCommits(
     per_page: perPage.toString(),
   });
 
-  const url = `${API_URL}/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/commits?${params}`;
+    const url = `${getApiUrl()}/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/commits?${params}`;
 
   const res = await fetch(url, { cache: "no-store", headers, credentials: "include" });
   if (!res.ok) throw new Error("Failed to fetch commits");
@@ -662,7 +673,7 @@ export async function getBranches(
   } catch (error) {
     // Fallback to old API if new one fails
     const headers = await getLegacyAuthHeaders();
-    const url = `${API_URL}/api/v1/repos/${owner}/${name}/branches`;
+    const url = `${getApiUrl()}/v1/repos/${owner}/${name}/branches`;
     const res = await fetch(url, { cache: "no-store", headers, credentials: "include" });
     if (!res.ok) throw new Error("Failed to fetch branches");
     return res.json();
@@ -676,7 +687,7 @@ export async function getDiff(
 ): Promise<Diff> {
   const headers = await getLegacyAuthHeaders();
 
-  const url = `${API_URL}/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/diff/${encodeURIComponent(hash)}`;
+  const url = `${getApiUrl()}/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/diff/${encodeURIComponent(hash)}`;
   const res = await fetch(url, { cache: "no-store", headers, credentials: "include" });
   if (!res.ok) throw new Error("Failed to fetch diff");
   return res.json();
@@ -695,7 +706,7 @@ export async function getBlame(
 
   const headers = await getLegacyAuthHeaders();
 
-  const url = `${API_URL}/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/blame/${encodeURIComponent(ref)}/${path.split("/").map(encodeURIComponent).join("/")}`;
+  const url = `${getApiUrl()}/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/blame/${encodeURIComponent(ref)}/${path.split("/").map(encodeURIComponent).join("/")}`;
 
   const res = await fetch(url, { cache: "no-store", headers, credentials: "include" });
   if (!res.ok) throw new Error("Failed to fetch blame");
