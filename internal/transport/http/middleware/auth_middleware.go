@@ -10,6 +10,7 @@ import (
 
 	"github.com/bravo68web/stasis/internal/domain/models"
 	"github.com/bravo68web/stasis/internal/domain/service"
+	"github.com/bravo68web/stasis/pkg/logger"
 )
 
 // ContextKey is a type for context keys
@@ -29,12 +30,14 @@ const (
 // AuthMiddleware handles authentication for HTTP requests
 type AuthMiddleware struct {
 	authService service.AuthService
+	log         *logger.Logger
 }
 
 // NewAuthMiddleware creates a new AuthMiddleware instance
 func NewAuthMiddleware(authService service.AuthService) *AuthMiddleware {
 	return &AuthMiddleware{
 		authService: authService,
+		log:         logger.Get().WithFields(logger.Component("auth-middleware")),
 	}
 }
 
@@ -44,6 +47,11 @@ func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user := m.extractAndValidateUser(c)
 		if user != nil {
+			m.log.Debug("User authenticated (optional auth)",
+				logger.String("user_id", user.ID.String()),
+				logger.String("username", user.Username),
+				logger.Path(c.Request.URL.Path),
+			)
 			m.setUserContext(c, user)
 		}
 		c.Next()
@@ -55,6 +63,11 @@ func (m *AuthMiddleware) RequireAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user := m.extractAndValidateUser(c)
 		if user == nil {
+			m.log.Warn("Authentication required but not provided",
+				logger.Path(c.Request.URL.Path),
+				logger.Method(c.Request.Method),
+				logger.ClientIP(c.ClientIP()),
+			)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"error":   "unauthorized",
 				"message": "authentication required",
@@ -62,6 +75,11 @@ func (m *AuthMiddleware) RequireAuth() gin.HandlerFunc {
 			return
 		}
 
+		m.log.Debug("User authenticated successfully",
+			logger.String("user_id", user.ID.String()),
+			logger.String("username", user.Username),
+			logger.Path(c.Request.URL.Path),
+		)
 		m.setUserContext(c, user)
 		c.Next()
 	}
@@ -72,6 +90,11 @@ func (m *AuthMiddleware) RequireAdmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user := m.extractAndValidateUser(c)
 		if user == nil {
+			m.log.Warn("Admin access attempted without authentication",
+				logger.Path(c.Request.URL.Path),
+				logger.Method(c.Request.Method),
+				logger.ClientIP(c.ClientIP()),
+			)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"error":   "unauthorized",
 				"message": "authentication required",
@@ -80,6 +103,12 @@ func (m *AuthMiddleware) RequireAdmin() gin.HandlerFunc {
 		}
 
 		if !user.IsAdmin {
+			m.log.Warn("Non-admin user attempted to access admin endpoint",
+				logger.String("user_id", user.ID.String()),
+				logger.String("username", user.Username),
+				logger.Path(c.Request.URL.Path),
+				logger.Method(c.Request.Method),
+			)
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 				"error":   "forbidden",
 				"message": "admin privileges required",
@@ -87,6 +116,11 @@ func (m *AuthMiddleware) RequireAdmin() gin.HandlerFunc {
 			return
 		}
 
+		m.log.Debug("Admin user authenticated",
+			logger.String("user_id", user.ID.String()),
+			logger.String("username", user.Username),
+			logger.Path(c.Request.URL.Path),
+		)
 		m.setUserContext(c, user)
 		c.Next()
 	}
@@ -109,12 +143,20 @@ func (m *AuthMiddleware) extractAndValidateUser(c *gin.Context) *models.User {
 		// Try session token authentication first (OIDC JWT)
 		user, err := m.authService.AuthenticateSession(ctx, token)
 		if err == nil && user != nil {
+			m.log.Debug("User authenticated via session token",
+				logger.String("user_id", user.ID.String()),
+				logger.String("auth_method", "session_token"),
+			)
 			return user
 		}
 
 		// If session auth fails, try PAT (Personal Access Token) authentication
 		user, err = m.authService.AuthenticateToken(ctx, token)
 		if err == nil && user != nil {
+			m.log.Debug("User authenticated via PAT",
+				logger.String("user_id", user.ID.String()),
+				logger.String("auth_method", "pat"),
+			)
 			return user
 		}
 	}
@@ -124,6 +166,10 @@ func (m *AuthMiddleware) extractAndValidateUser(c *gin.Context) *models.User {
 	if authHeader != "" && strings.HasPrefix(authHeader, "Basic ") {
 		user := m.authenticateBasic(ctx, authHeader)
 		if user != nil {
+			m.log.Debug("User authenticated via Basic Auth",
+				logger.String("user_id", user.ID.String()),
+				logger.String("auth_method", "basic_auth"),
+			)
 			return user
 		}
 	}
@@ -133,12 +179,20 @@ func (m *AuthMiddleware) extractAndValidateUser(c *gin.Context) *models.User {
 		// Try session token authentication first
 		user, err := m.authService.AuthenticateSession(ctx, token)
 		if err == nil && user != nil {
+			m.log.Debug("User authenticated via query param session token",
+				logger.String("user_id", user.ID.String()),
+				logger.String("auth_method", "query_session_token"),
+			)
 			return user
 		}
 
 		// Try PAT authentication
 		user, err = m.authService.AuthenticateToken(ctx, token)
 		if err == nil && user != nil {
+			m.log.Debug("User authenticated via query param PAT",
+				logger.String("user_id", user.ID.String()),
+				logger.String("auth_method", "query_pat"),
+			)
 			return user
 		}
 	}
@@ -168,15 +222,22 @@ func (m *AuthMiddleware) authenticateBasic(ctx context.Context, authHeader strin
 	// Try authenticating the password as a PAT
 	user, err := m.authService.AuthenticateToken(ctx, password)
 	if err == nil && user != nil {
+		m.log.Debug("User authenticated via Basic Auth PAT",
+			logger.String("user_id", user.ID.String()),
+		)
 		return user
 	}
 
 	// Also try as a session token (for OIDC users)
 	user, err = m.authService.AuthenticateSession(ctx, password)
 	if err == nil && user != nil {
+		m.log.Debug("User authenticated via Basic Auth session token",
+			logger.String("user_id", user.ID.String()),
+		)
 		return user
 	}
 
+	m.log.Debug("Basic auth failed - no valid credentials")
 	return nil
 }
 

@@ -5,9 +5,10 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
-	"log"
 
 	"ariga.io/atlas-go-sdk/atlasexec"
+
+	"github.com/bravo68web/stasis/pkg/logger"
 )
 
 //go:embed all:migrations
@@ -18,6 +19,7 @@ type Migrator struct {
 	db              *Database
 	dryRun          bool
 	baselineVersion string
+	log             *logger.Logger
 }
 
 // NewMigrator creates a new migrator instance
@@ -26,6 +28,7 @@ func NewMigrator(db *Database) *Migrator {
 		db:              db,
 		dryRun:          false,
 		baselineVersion: "",
+		log:             logger.Get().WithFields(logger.Component("migrator")),
 	}
 }
 
@@ -44,21 +47,27 @@ func (m *Migrator) WithBaseline(version string) *Migrator {
 
 // ApplyMigrations applies all pending migrations to the database
 func (m *Migrator) ApplyMigrations(ctx context.Context) error {
+	m.log.Info("Starting database migration process...")
+
 	// First, detect if this database already has our application tables
 	// This MUST happen before any Atlas operations to properly determine baseline
 	hasExistingSchema := m.detectExistingSchema(ctx)
 	hasRevisionTable := m.detectRevisionTable(ctx)
 
 	if hasExistingSchema {
-		log.Println("Detected existing application schema in database")
+		m.log.Info("Detected existing application schema in database")
 	}
 	if hasRevisionTable {
-		log.Println("Detected existing Atlas revision table")
+		m.log.Info("Detected existing Atlas revision table")
 	}
 
 	// Get the migrations subdirectory from the embedded filesystem
+	m.log.Debug("Loading embedded migrations...")
 	migrationsDir, err := fs.Sub(migrationsFS, "migrations")
 	if err != nil {
+		m.log.Error("Failed to get migrations subdirectory",
+			logger.Error(err),
+		)
 		return fmt.Errorf("failed to get migrations subdirectory: %w", err)
 	}
 
@@ -67,13 +76,20 @@ func (m *Migrator) ApplyMigrations(ctx context.Context) error {
 		atlasexec.WithMigrations(migrationsDir),
 	)
 	if err != nil {
+		m.log.Error("Failed to create working directory",
+			logger.Error(err),
+		)
 		return fmt.Errorf("failed to create working directory: %w", err)
 	}
 	defer workdir.Close()
 
 	// Initialize the Atlas client
+	m.log.Debug("Initializing Atlas migration client...")
 	client, err := atlasexec.NewClient(workdir.Path(), "atlas")
 	if err != nil {
+		m.log.Error("Failed to initialize Atlas client",
+			logger.Error(err),
+		)
 		return fmt.Errorf("failed to initialize atlas client: %w", err)
 	}
 
@@ -81,6 +97,10 @@ func (m *Migrator) ApplyMigrations(ctx context.Context) error {
 	params := &atlasexec.MigrateApplyParams{
 		URL:    m.db.config.URL(),
 		DryRun: m.dryRun,
+	}
+
+	if m.dryRun {
+		m.log.Info("Running migrations in dry-run mode (no actual changes)")
 	}
 
 	// If database has existing tables but NO revision table, we need to baseline
@@ -92,12 +112,17 @@ func (m *Migrator) ApplyMigrations(ctx context.Context) error {
 		if baselineVersion == "" {
 			baselineVersion, err = m.getLatestMigrationVersion(migrationsDir)
 			if err != nil {
+				m.log.Error("Failed to determine baseline version",
+					logger.Error(err),
+				)
 				return fmt.Errorf("failed to determine baseline version: %w", err)
 			}
 		}
 
 		if baselineVersion != "" {
-			log.Printf("Database has existing schema without migration history, setting baseline to version: %s", baselineVersion)
+			m.log.Info("Database has existing schema without migration history, setting baseline",
+				logger.String("baseline_version", baselineVersion),
+			)
 			params.BaselineVersion = baselineVersion
 		}
 	} else {
@@ -107,35 +132,50 @@ func (m *Migrator) ApplyMigrations(ctx context.Context) error {
 	}
 
 	// Apply pending migrations
+	m.log.Info("Applying database migrations...")
 	result, err := client.MigrateApply(ctx, params)
 	if err != nil {
 		// Handle partial migration failures
 		if applyErr, ok := err.(*atlasexec.MigrateApplyError); ok {
-			log.Printf("Migration failed with partial apply: %s", applyErr.Error())
+			m.log.Error("Migration failed with partial apply",
+				logger.Error(applyErr),
+			)
 			for _, r := range applyErr.Result {
-				log.Printf("Applied %d migrations before failure", len(r.Applied))
+				m.log.Error("Partial migration result",
+					logger.Int("applied_count", len(r.Applied)),
+				)
 			}
+		} else {
+			m.log.Error("Failed to apply migrations",
+				logger.Error(err),
+			)
 		}
 		return fmt.Errorf("failed to apply migrations: %w", err)
 	}
 
 	// Log migration results
 	if result == nil {
-		log.Println("Database migrations completed (baseline set)")
+		m.log.Info("Database migrations completed (baseline set)")
 		return nil
 	}
 
 	if len(result.Applied) == 0 {
-		log.Println("Database is up to date, no migrations applied")
+		m.log.Info("Database is up to date, no migrations applied")
 	} else {
-		log.Printf("Successfully applied %d migration(s)", len(result.Applied))
+		m.log.Info("Successfully applied migrations",
+			logger.Int("count", len(result.Applied)),
+		)
 		for _, applied := range result.Applied {
-			log.Printf("  - Applied: %s", applied.Name)
+			m.log.Debug("Applied migration",
+				logger.String("name", applied.Name),
+			)
 		}
 	}
 
 	if len(result.Pending) > 0 {
-		log.Printf("Note: %d migration(s) still pending", len(result.Pending))
+		m.log.Warn("Some migrations are still pending",
+			logger.Int("pending_count", len(result.Pending)),
+		)
 	}
 
 	return nil
@@ -143,9 +183,14 @@ func (m *Migrator) ApplyMigrations(ctx context.Context) error {
 
 // GetStatus returns the current migration status
 func (m *Migrator) GetStatus(ctx context.Context) (*atlasexec.MigrateStatus, error) {
+	m.log.Debug("Getting migration status...")
+
 	// Get the migrations subdirectory from the embedded filesystem
 	migrationsDir, err := fs.Sub(migrationsFS, "migrations")
 	if err != nil {
+		m.log.Error("Failed to get migrations subdirectory",
+			logger.Error(err),
+		)
 		return nil, fmt.Errorf("failed to get migrations subdirectory: %w", err)
 	}
 
@@ -153,12 +198,18 @@ func (m *Migrator) GetStatus(ctx context.Context) (*atlasexec.MigrateStatus, err
 		atlasexec.WithMigrations(migrationsDir),
 	)
 	if err != nil {
+		m.log.Error("Failed to create working directory",
+			logger.Error(err),
+		)
 		return nil, fmt.Errorf("failed to create working directory: %w", err)
 	}
 	defer workdir.Close()
 
 	client, err := atlasexec.NewClient(workdir.Path(), "atlas")
 	if err != nil {
+		m.log.Error("Failed to initialize Atlas client",
+			logger.Error(err),
+		)
 		return nil, fmt.Errorf("failed to initialize atlas client: %w", err)
 	}
 
@@ -166,8 +217,17 @@ func (m *Migrator) GetStatus(ctx context.Context) (*atlasexec.MigrateStatus, err
 		URL: m.db.config.URL(),
 	})
 	if err != nil {
+		m.log.Error("Failed to get migration status",
+			logger.Error(err),
+		)
 		return nil, fmt.Errorf("failed to get migration status: %w", err)
 	}
+
+	m.log.Debug("Migration status retrieved successfully",
+		logger.String("current", status.Current),
+		logger.Int("pending_count", len(status.Pending)),
+		logger.Int("applied_count", len(status.Applied)),
+	)
 
 	return status, nil
 }
@@ -176,7 +236,9 @@ func (m *Migrator) GetStatus(ctx context.Context) (*atlasexec.MigrateStatus, err
 // Useful for application startup where migration failure should prevent startup
 func (m *Migrator) MustApplyMigrations(ctx context.Context) {
 	if err := m.ApplyMigrations(ctx); err != nil {
-		panic(fmt.Sprintf("failed to apply database migrations: %v", err))
+		m.log.Fatal("Failed to apply database migrations - cannot continue",
+			logger.Error(err),
+		)
 	}
 }
 
@@ -186,6 +248,9 @@ func (m *Migrator) detectExistingSchema(ctx context.Context) bool {
 
 	sqlDB, err := m.db.db.DB()
 	if err != nil {
+		m.log.Debug("Failed to get SQL DB for schema detection",
+			logger.Error(err),
+		)
 		return false
 	}
 
@@ -198,6 +263,9 @@ func (m *Migrator) detectExistingSchema(ctx context.Context) bool {
 		)`
 		err := sqlDB.QueryRowContext(ctx, query, table).Scan(&exists)
 		if err == nil && exists {
+			m.log.Debug("Found existing application table",
+				logger.String("table", table),
+			)
 			return true
 		}
 	}
@@ -209,6 +277,9 @@ func (m *Migrator) detectExistingSchema(ctx context.Context) bool {
 func (m *Migrator) detectRevisionTable(ctx context.Context) bool {
 	sqlDB, err := m.db.db.DB()
 	if err != nil {
+		m.log.Debug("Failed to get SQL DB for revision table detection",
+			logger.Error(err),
+		)
 		return false
 	}
 
@@ -219,6 +290,9 @@ func (m *Migrator) detectRevisionTable(ctx context.Context) bool {
 		AND table_name = 'atlas_schema_revisions'
 	)`
 	err = sqlDB.QueryRowContext(ctx, query).Scan(&exists)
+	if err == nil && exists {
+		m.log.Debug("Atlas revision table exists")
+	}
 	return err == nil && exists
 }
 
@@ -226,10 +300,14 @@ func (m *Migrator) detectRevisionTable(ctx context.Context) bool {
 func (m *Migrator) getLatestMigrationVersion(migrationsDir fs.FS) (string, error) {
 	entries, err := fs.ReadDir(migrationsDir, ".")
 	if err != nil {
+		m.log.Error("Failed to read migrations directory",
+			logger.Error(err),
+		)
 		return "", fmt.Errorf("failed to read migrations directory: %w", err)
 	}
 
 	var latestVersion string
+	migrationCount := 0
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -242,8 +320,14 @@ func (m *Migrator) getLatestMigrationVersion(migrationsDir fs.FS) (string, error
 			if version > latestVersion {
 				latestVersion = version
 			}
+			migrationCount++
 		}
 	}
+
+	m.log.Debug("Found migration files",
+		logger.Int("count", migrationCount),
+		logger.String("latest_version", latestVersion),
+	)
 
 	return latestVersion, nil
 }

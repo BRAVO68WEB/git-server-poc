@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/bravo68web/stasis/internal/domain/service"
+	"github.com/bravo68web/stasis/pkg/logger"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -25,56 +26,106 @@ import (
 // GitOperations implements the GitService interface using go-git library
 type GitOperations struct {
 	storage service.StorageService
+	log     *logger.Logger
 }
 
 // NewGitOperations creates a new GitOperations instance
 func NewGitOperations(storage service.StorageService) service.GitService {
 	return &GitOperations{
 		storage: storage,
+		log:     logger.Get().WithFields(logger.Component("git-operations")),
 	}
 }
 
 // InitRepository initializes a new Git repository at the specified path
 func (g *GitOperations) InitRepository(ctx context.Context, repoPath string, bare bool) error {
+	g.log.Info("Initializing git repository",
+		logger.String("repo_path", repoPath),
+		logger.Bool("bare", bare),
+	)
+
 	// Ensure the directory exists
 	if err := os.MkdirAll(repoPath, 0755); err != nil {
+		g.log.Error("Failed to create repository directory",
+			logger.Error(err),
+			logger.String("repo_path", repoPath),
+		)
 		return fmt.Errorf("failed to create repository directory: %w", err)
 	}
 
 	// Initialize the repository
 	_, err := git.PlainInit(repoPath, bare)
 	if err != nil {
+		g.log.Error("Failed to initialize git repository",
+			logger.Error(err),
+			logger.String("repo_path", repoPath),
+		)
 		return fmt.Errorf("failed to initialize repository: %w", err)
 	}
 
 	// For bare repos, update server info to support dumb HTTP protocol
 	if bare {
 		if err := g.UpdateServerInfo(ctx, repoPath); err != nil {
-			// TODO: Log the error but don't fail the init
+			g.log.Warn("Failed to update server info after init",
+				logger.Error(err),
+				logger.String("repo_path", repoPath),
+			)
 		}
 	}
+
+	g.log.Info("Git repository initialized successfully",
+		logger.String("repo_path", repoPath),
+	)
 
 	return nil
 }
 
 // CloneRepository clones a repository from source to destination
 func (g *GitOperations) CloneRepository(ctx context.Context, source, dest string, bare bool) error {
+	g.log.Info("Cloning git repository",
+		logger.String("source", source),
+		logger.String("dest", dest),
+		logger.Bool("bare", bare),
+	)
+
 	_, err := git.PlainClone(dest, bare, &git.CloneOptions{
 		URL:      source,
 		Progress: nil,
 	})
 	if err != nil {
+		g.log.Error("Failed to clone repository",
+			logger.Error(err),
+			logger.String("source", source),
+			logger.String("dest", dest),
+		)
 		return fmt.Errorf("failed to clone repository: %w", err)
 	}
+
+	g.log.Info("Repository cloned successfully",
+		logger.String("source", source),
+		logger.String("dest", dest),
+	)
 
 	return nil
 }
 
 // DeleteRepository removes a repository from the storage
 func (g *GitOperations) DeleteRepository(ctx context.Context, repoPath string) error {
+	g.log.Info("Deleting git repository",
+		logger.String("repo_path", repoPath),
+	)
+
 	if err := os.RemoveAll(repoPath); err != nil {
+		g.log.Error("Failed to delete repository",
+			logger.Error(err),
+			logger.String("repo_path", repoPath),
+		)
 		return fmt.Errorf("failed to delete repository: %w", err)
 	}
+
+	g.log.Info("Repository deleted successfully",
+		logger.String("repo_path", repoPath),
+	)
 
 	return nil
 }

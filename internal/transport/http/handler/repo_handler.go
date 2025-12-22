@@ -8,6 +8,7 @@ import (
 	"github.com/bravo68web/stasis/internal/application/service"
 	"github.com/bravo68web/stasis/internal/transport/http/middleware"
 	apperrors "github.com/bravo68web/stasis/pkg/errors"
+	"github.com/bravo68web/stasis/pkg/logger"
 	"github.com/gin-gonic/gin"
 )
 
@@ -17,6 +18,7 @@ type RepoHandler struct {
 	baseURL     string
 	sshHost     string
 	sshPort     int
+	log         *logger.Logger
 }
 
 // NewRepoHandler creates a new RepoHandler instance
@@ -31,6 +33,7 @@ func NewRepoHandler(
 		baseURL:     baseURL,
 		sshHost:     sshHost,
 		sshPort:     sshPort,
+		log:         logger.Get().WithFields(logger.Component("repo-handler")),
 	}
 }
 
@@ -38,6 +41,9 @@ func NewRepoHandler(
 func (h *RepoHandler) CreateRepository(c *gin.Context) {
 	user := middleware.GetUserFromContext(c)
 	if user == nil {
+		h.log.Warn("Create repository attempted without authentication",
+			logger.ClientIP(c.ClientIP()),
+		)
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error":   "unauthorized",
 			"message": "Authentication required",
@@ -45,8 +51,17 @@ func (h *RepoHandler) CreateRepository(c *gin.Context) {
 		return
 	}
 
+	h.log.Debug("Create repository request received",
+		logger.String("user_id", user.ID.String()),
+		logger.String("username", user.Username),
+	)
+
 	var req dto.CreateRepoRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		h.log.Warn("Invalid create repository request body",
+			logger.Error(err),
+			logger.String("user_id", user.ID.String()),
+		)
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   "bad_request",
 			"message": "Invalid request body",
@@ -57,12 +72,22 @@ func (h *RepoHandler) CreateRepository(c *gin.Context) {
 
 	// Validate request
 	if err := req.Validate(); err != nil {
+		h.log.Warn("Repository validation failed",
+			logger.Error(err),
+			logger.String("name", req.Name),
+		)
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   "validation_error",
 			"message": err.Error(),
 		})
 		return
 	}
+
+	h.log.Info("Creating repository",
+		logger.String("name", req.Name),
+		logger.String("owner", user.Username),
+		logger.Bool("is_private", req.IsPrivate),
+	)
 
 	// Create repository
 	repo, err := h.repoService.CreateRepository(
@@ -73,9 +98,20 @@ func (h *RepoHandler) CreateRepository(c *gin.Context) {
 		req.IsPrivate,
 	)
 	if err != nil {
+		h.log.Error("Failed to create repository",
+			logger.Error(err),
+			logger.String("name", req.Name),
+			logger.String("owner", user.Username),
+		)
 		h.handleError(c, err)
 		return
 	}
+
+	h.log.Info("Repository created successfully",
+		logger.String("repo_id", repo.ID.String()),
+		logger.String("name", repo.Name),
+		logger.String("owner", user.Username),
+	)
 
 	// Build response
 	response := dto.RepoFromModel(repo, h.baseURL, h.sshHost, h.sshPort)
@@ -87,6 +123,9 @@ func (h *RepoHandler) CreateRepository(c *gin.Context) {
 func (h *RepoHandler) ListRepositories(c *gin.Context) {
 	user := middleware.GetUserFromContext(c)
 	if user == nil {
+		h.log.Warn("List repositories attempted without authentication",
+			logger.ClientIP(c.ClientIP()),
+		)
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error":   "unauthorized",
 			"message": "Authentication required",
@@ -94,11 +133,25 @@ func (h *RepoHandler) ListRepositories(c *gin.Context) {
 		return
 	}
 
+	h.log.Debug("Listing repositories for user",
+		logger.String("user_id", user.ID.String()),
+		logger.String("username", user.Username),
+	)
+
 	repos, err := h.repoService.ListUserRepositories(c.Request.Context(), user.ID)
 	if err != nil {
+		h.log.Error("Failed to list user repositories",
+			logger.Error(err),
+			logger.String("user_id", user.ID.String()),
+		)
 		h.handleError(c, err)
 		return
 	}
+
+	h.log.Debug("Found repositories",
+		logger.String("username", user.Username),
+		logger.Int("count", len(repos)),
+	)
 
 	// Convert to response DTOs
 	responses := make([]dto.RepoResponse, len(repos))
@@ -126,11 +179,23 @@ func (h *RepoHandler) ListPublicRepositories(c *gin.Context) {
 
 	offset := (page - 1) * perPage
 
+	h.log.Debug("Listing public repositories",
+		logger.Int("page", page),
+		logger.Int("per_page", perPage),
+	)
+
 	repos, err := h.repoService.ListPublicRepositories(c.Request.Context(), perPage, offset)
 	if err != nil {
+		h.log.Error("Failed to list public repositories",
+			logger.Error(err),
+		)
 		h.handleError(c, err)
 		return
 	}
+
+	h.log.Debug("Found public repositories",
+		logger.Int("count", len(repos)),
+	)
 
 	// Convert to response DTOs
 	responses := make([]dto.RepoResponse, len(repos))
@@ -151,8 +216,18 @@ func (h *RepoHandler) GetRepository(c *gin.Context) {
 	owner := c.Param("owner")
 	repoName := c.Param("repo")
 
+	h.log.Debug("Getting repository",
+		logger.String("owner", owner),
+		logger.String("repo", repoName),
+	)
+
 	repo, err := h.repoService.GetRepository(c.Request.Context(), owner, repoName)
 	if err != nil {
+		h.log.Debug("Repository not found",
+			logger.String("owner", owner),
+			logger.String("repo", repoName),
+			logger.Error(err),
+		)
 		h.handleError(c, err)
 		return
 	}
@@ -161,6 +236,10 @@ func (h *RepoHandler) GetRepository(c *gin.Context) {
 	user := middleware.GetUserFromContext(c)
 	if repo.IsPrivate {
 		if user == nil {
+			h.log.Debug("Anonymous user attempted to access private repository",
+				logger.String("owner", owner),
+				logger.String("repo", repoName),
+			)
 			c.JSON(http.StatusNotFound, gin.H{
 				"error":   "not_found",
 				"message": "Repository not found",
@@ -168,6 +247,11 @@ func (h *RepoHandler) GetRepository(c *gin.Context) {
 			return
 		}
 		if user.ID != repo.OwnerID && !user.IsAdmin {
+			h.log.Debug("User attempted to access private repository without permission",
+				logger.String("user_id", user.ID.String()),
+				logger.String("owner", owner),
+				logger.String("repo", repoName),
+			)
 			c.JSON(http.StatusNotFound, gin.H{
 				"error":   "not_found",
 				"message": "Repository not found",
@@ -175,6 +259,12 @@ func (h *RepoHandler) GetRepository(c *gin.Context) {
 			return
 		}
 	}
+
+	h.log.Debug("Repository retrieved successfully",
+		logger.String("repo_id", repo.ID.String()),
+		logger.String("owner", owner),
+		logger.String("repo", repoName),
+	)
 
 	response := dto.RepoFromModel(repo, h.baseURL, h.sshHost, h.sshPort)
 	c.JSON(http.StatusOK, response)
@@ -187,6 +277,10 @@ func (h *RepoHandler) UpdateRepository(c *gin.Context) {
 
 	user := middleware.GetUserFromContext(c)
 	if user == nil {
+		h.log.Warn("Update repository attempted without authentication",
+			logger.String("owner", owner),
+			logger.String("repo", repoName),
+		)
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error":   "unauthorized",
 			"message": "Authentication required",
@@ -194,14 +288,30 @@ func (h *RepoHandler) UpdateRepository(c *gin.Context) {
 		return
 	}
 
+	h.log.Debug("Update repository request",
+		logger.String("user_id", user.ID.String()),
+		logger.String("owner", owner),
+		logger.String("repo", repoName),
+	)
+
 	repo, err := h.repoService.GetRepository(c.Request.Context(), owner, repoName)
 	if err != nil {
+		h.log.Debug("Repository not found for update",
+			logger.String("owner", owner),
+			logger.String("repo", repoName),
+			logger.Error(err),
+		)
 		h.handleError(c, err)
 		return
 	}
 
 	// Check ownership
 	if user.ID != repo.OwnerID && !user.IsAdmin {
+		h.log.Warn("User attempted to update repository without permission",
+			logger.String("user_id", user.ID.String()),
+			logger.String("owner", owner),
+			logger.String("repo", repoName),
+		)
 		c.JSON(http.StatusForbidden, gin.H{
 			"error":   "forbidden",
 			"message": "You don't have permission to update this repository",
@@ -211,12 +321,21 @@ func (h *RepoHandler) UpdateRepository(c *gin.Context) {
 
 	var req dto.UpdateRepoRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		h.log.Warn("Invalid update repository request body",
+			logger.Error(err),
+		)
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   "bad_request",
 			"message": "Invalid request body",
 		})
 		return
 	}
+
+	h.log.Info("Updating repository",
+		logger.String("repo_id", repo.ID.String()),
+		logger.String("owner", owner),
+		logger.String("repo", repoName),
+	)
 
 	updatedRepo, err := h.repoService.UpdateRepository(
 		c.Request.Context(),
@@ -225,9 +344,19 @@ func (h *RepoHandler) UpdateRepository(c *gin.Context) {
 		req.IsPrivate,
 	)
 	if err != nil {
+		h.log.Error("Failed to update repository",
+			logger.Error(err),
+			logger.String("repo_id", repo.ID.String()),
+		)
 		h.handleError(c, err)
 		return
 	}
+
+	h.log.Info("Repository updated successfully",
+		logger.String("repo_id", repo.ID.String()),
+		logger.String("owner", owner),
+		logger.String("repo", repoName),
+	)
 
 	response := dto.RepoFromModel(updatedRepo, h.baseURL, h.sshHost, h.sshPort)
 	c.JSON(http.StatusOK, response)
@@ -240,6 +369,10 @@ func (h *RepoHandler) DeleteRepository(c *gin.Context) {
 
 	user := middleware.GetUserFromContext(c)
 	if user == nil {
+		h.log.Warn("Delete repository attempted without authentication",
+			logger.String("owner", owner),
+			logger.String("repo", repoName),
+		)
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error":   "unauthorized",
 			"message": "Authentication required",
@@ -247,14 +380,30 @@ func (h *RepoHandler) DeleteRepository(c *gin.Context) {
 		return
 	}
 
+	h.log.Debug("Delete repository request",
+		logger.String("user_id", user.ID.String()),
+		logger.String("owner", owner),
+		logger.String("repo", repoName),
+	)
+
 	repo, err := h.repoService.GetRepository(c.Request.Context(), owner, repoName)
 	if err != nil {
+		h.log.Debug("Repository not found for deletion",
+			logger.String("owner", owner),
+			logger.String("repo", repoName),
+			logger.Error(err),
+		)
 		h.handleError(c, err)
 		return
 	}
 
 	// Check ownership
 	if user.ID != repo.OwnerID && !user.IsAdmin {
+		h.log.Warn("User attempted to delete repository without permission",
+			logger.String("user_id", user.ID.String()),
+			logger.String("owner", owner),
+			logger.String("repo", repoName),
+		)
 		c.JSON(http.StatusForbidden, gin.H{
 			"error":   "forbidden",
 			"message": "You don't have permission to delete this repository",
@@ -262,10 +411,27 @@ func (h *RepoHandler) DeleteRepository(c *gin.Context) {
 		return
 	}
 
+	h.log.Info("Deleting repository",
+		logger.String("repo_id", repo.ID.String()),
+		logger.String("owner", owner),
+		logger.String("repo", repoName),
+		logger.String("deleted_by", user.Username),
+	)
+
 	if err := h.repoService.DeleteRepository(c.Request.Context(), repo.ID); err != nil {
+		h.log.Error("Failed to delete repository",
+			logger.Error(err),
+			logger.String("repo_id", repo.ID.String()),
+		)
 		h.handleError(c, err)
 		return
 	}
+
+	h.log.Info("Repository deleted successfully",
+		logger.String("repo_id", repo.ID.String()),
+		logger.String("owner", owner),
+		logger.String("repo", repoName),
+	)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Repository deleted successfully",
@@ -809,6 +975,10 @@ func (h *RepoHandler) GetBlame(c *gin.Context) {
 
 // handleError handles errors and returns appropriate HTTP responses
 func (h *RepoHandler) handleError(c *gin.Context, err error) {
+	h.log.Debug("Handling error response",
+		logger.Error(err),
+		logger.Path(c.Request.URL.Path),
+	)
 	if apperrors.IsNotFound(err) {
 		c.JSON(http.StatusNotFound, gin.H{
 			"error":   "not_found",

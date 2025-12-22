@@ -34,6 +34,9 @@ func (r *Router) RegisterRoutes() {
 		allowedOrigins = append(allowedOrigins, r.server.Config.OIDC.FrontendURL)
 	}
 
+	// Setup logging and recovery middleware
+	r.setupHTTPLoggerAndRecovery()
+
 	// Apply CORS middleware
 	r.server.Use(middleware.CORSMiddleware(allowedOrigins))
 
@@ -45,4 +48,29 @@ func (r *Router) RegisterRoutes() {
 	r.gitRouter()
 	r.sshKeyRouter()
 	r.tokenRouter()
+}
+
+func (r *Router) setupHTTPLoggerAndRecovery() {
+	// Add custom logging middleware
+	loggerMiddlewareCfg := &middleware.LoggerConfig{
+		Logger:           r.server.Logger,
+		SkipPaths:        []string{"/health", "/healthz", "/ready", "/readyz", "/metrics"},
+		SkipPathPrefixes: []string{"/static/"},
+		LogRequestBody:   r.server.Config.Logging.Development,
+		LogResponseBody:  false,
+		MaxBodyLogSize:   1024,
+		TraceIDHeader:    "X-Trace-ID",
+		RequestIDHeader:  "X-Request-ID",
+		IncludeHeaders:   r.server.Config.Logging.Development,
+		SensitiveHeaders: []string{"Authorization", "Cookie", "X-API-Key", "X-Auth-Token"},
+	}
+	r.server.Use(middleware.LoggerMiddlewareWithConfig(loggerMiddlewareCfg))
+
+	// Add recovery middleware with logging
+	recoveryCfg := &middleware.RecoveryConfig{
+		Logger:           r.server.Logger,
+		EnableStackTrace: r.server.Config.Logging.Development || r.server.Config.Server.Mode != "release",
+		StackTraceSize:   4096,
+	}
+	r.server.Use(middleware.RecoveryMiddlewareWithConfig(recoveryCfg))
 }

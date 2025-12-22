@@ -5,6 +5,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/bravo68web/stasis/internal/infrastructure/otel"
+	"github.com/bravo68web/stasis/pkg/logger"
 	"github.com/spf13/viper"
 )
 
@@ -99,9 +101,102 @@ type OIDCConfig struct {
 
 // LoggingConfig holds logging configuration
 type LoggingConfig struct {
-	Level      string `mapstructure:"level"` // debug, info, warn, error
-	OutputPath string `mapstructure:"output_path"`
-	Format     string `mapstructure:"format"` // json, console
+	// Level is the minimum log level (debug, info, warn, error)
+	Level string `mapstructure:"level"`
+
+	// Output defines where logs should be written (console, file, otel)
+	Output string `mapstructure:"output"`
+
+	// Format defines the log format (json, console) - only applicable for console/file output
+	Format string `mapstructure:"format"`
+
+	// FilePath is the path to the log file (required when Output is "file")
+	FilePath string `mapstructure:"file_path"`
+
+	// FileMaxSizeMB is the maximum size of the log file in megabytes before rotation
+	FileMaxSizeMB int `mapstructure:"file_max_size_mb"`
+
+	// FileMaxBackups is the maximum number of old log files to retain
+	FileMaxBackups int `mapstructure:"file_max_backups"`
+
+	// FileMaxAgeDays is the maximum number of days to retain old log files
+	FileMaxAgeDays int `mapstructure:"file_max_age_days"`
+
+	// FileCompress determines if rotated log files should be compressed
+	FileCompress bool `mapstructure:"file_compress"`
+
+	// Development enables development mode (more verbose, stacktraces, etc.)
+	Development bool `mapstructure:"development"`
+
+	// AddCaller adds caller information to log entries
+	AddCaller bool `mapstructure:"add_caller"`
+
+	// OTEL holds OpenTelemetry logging configuration
+	OTEL OTELLoggingConfig `mapstructure:"otel"`
+}
+
+// OTELLoggingConfig holds OpenTelemetry logging configuration
+type OTELLoggingConfig struct {
+	// Enabled determines if OTEL logging is enabled
+	Enabled bool `mapstructure:"enabled"`
+
+	// Endpoint is the OTEL collector endpoint (e.g., "localhost:4317")
+	Endpoint string `mapstructure:"endpoint"`
+
+	// ServiceName is the name of the service for OTEL
+	ServiceName string `mapstructure:"service_name"`
+
+	// ServiceVersion is the version of the service
+	ServiceVersion string `mapstructure:"service_version"`
+
+	// Environment is the deployment environment (e.g., "production", "staging")
+	Environment string `mapstructure:"environment"`
+
+	// Insecure disables TLS for the OTEL connection
+	Insecure bool `mapstructure:"insecure"`
+
+	// Headers are additional headers to send with OTEL requests
+	Headers map[string]string `mapstructure:"headers"`
+}
+
+// ToLoggerConfig converts LoggingConfig to a logger.Config
+func (c *LoggingConfig) ToLoggerConfig() *logger.Config {
+	var output logger.OutputType
+	switch strings.ToLower(c.Output) {
+	case "file":
+		output = logger.OutputFile
+	case "otel":
+		output = logger.OutputOTEL
+	default:
+		output = logger.OutputConsole
+	}
+
+	return &logger.Config{
+		Level:          c.Level,
+		Output:         output,
+		Format:         c.Format,
+		FilePath:       c.FilePath,
+		FileMaxSizeMB:  c.FileMaxSizeMB,
+		FileMaxBackups: c.FileMaxBackups,
+		FileMaxAgeDays: c.FileMaxAgeDays,
+		FileCompress:   c.FileCompress,
+		Development:    c.Development,
+		AddCaller:      c.AddCaller,
+		CallerSkip:     1,
+	}
+}
+
+// ToOTELConfig converts OTELLoggingConfig to an otel.Config
+func (c *OTELLoggingConfig) ToOTELConfig() *otel.Config {
+	return &otel.Config{
+		Enabled:        c.Enabled,
+		Endpoint:       c.Endpoint,
+		ServiceName:    c.ServiceName,
+		ServiceVersion: c.ServiceVersion,
+		Environment:    c.Environment,
+		Insecure:       c.Insecure,
+		Headers:        c.Headers,
+	}
 }
 
 // Load reads configuration from file and environment variables
@@ -205,8 +300,23 @@ func setDefaults(v *viper.Viper) {
 
 	// Logging defaults
 	v.SetDefault("logging.level", "info")
-	v.SetDefault("logging.output_path", "stdout")
+	v.SetDefault("logging.output", "console")
 	v.SetDefault("logging.format", "json")
+	v.SetDefault("logging.file_path", "./logs/app.log")
+	v.SetDefault("logging.file_max_size_mb", 100)
+	v.SetDefault("logging.file_max_backups", 3)
+	v.SetDefault("logging.file_max_age_days", 28)
+	v.SetDefault("logging.file_compress", true)
+	v.SetDefault("logging.development", false)
+	v.SetDefault("logging.add_caller", true)
+
+	// OTEL logging defaults
+	v.SetDefault("logging.otel.enabled", false)
+	v.SetDefault("logging.otel.endpoint", "localhost:4317")
+	v.SetDefault("logging.otel.service_name", "stasis")
+	v.SetDefault("logging.otel.service_version", "1.0.0")
+	v.SetDefault("logging.otel.environment", "development")
+	v.SetDefault("logging.otel.insecure", true)
 }
 
 // overrideFromEnv handles special environment variable overrides
