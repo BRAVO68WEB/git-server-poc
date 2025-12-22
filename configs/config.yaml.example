@@ -1,4 +1,4 @@
-# Git Server Configuration
+# Stasis Server Configuration
 
 server:
   host: "0.0.0.0"
@@ -49,15 +49,6 @@ oidc:
     - "email"
   # Secret for signing session JWTs (use env var STASIS_OIDC_JWT_SECRET in production)
   jwt_secret: "change-this-secret-in-production"
-
-# OPA (Open Policy Agent) Authorization
-# Uses the embedded OPA Go SDK - no external server required
-opa:
-  enabled: false
-  # Path to the Rego policy file
-  policy_path: "./policies/rbac.rego"
-  # OPA query to evaluate (default: data.stasis.authz.allow)
-  query: "data.stasis.authz.allow"
 
 logging:
   level: "info"  # debug, info, warn, error

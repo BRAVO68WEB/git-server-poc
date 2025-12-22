@@ -15,7 +15,6 @@ type Config struct {
 	Storage  StorageConfig  `mapstructure:"storage"`
 	SSH      SSHConfig      `mapstructure:"ssh"`
 	OIDC     OIDCConfig     `mapstructure:"oidc"`
-	OPA      OPAConfig      `mapstructure:"opa"`
 	Logging  LoggingConfig  `mapstructure:"logging"`
 }
 
@@ -98,13 +97,6 @@ type OIDCConfig struct {
 	JWTSecret    string   `mapstructure:"jwt_secret"`    // Secret for signing session JWTs
 }
 
-// OPAConfig holds Open Policy Agent configuration
-type OPAConfig struct {
-	Enabled    bool   `mapstructure:"enabled"`
-	PolicyPath string `mapstructure:"policy_path"` // Path to .rego policy file
-	Query      string `mapstructure:"query"`       // OPA query (default: data.gitserver.authz.allow)
-}
-
 // LoggingConfig holds logging configuration
 type LoggingConfig struct {
 	Level      string `mapstructure:"level"` // debug, info, warn, error
@@ -127,7 +119,7 @@ func Load(configPath string) (*Config, error) {
 	v.SetConfigType("yaml")
 
 	// Read from environment variables
-	v.SetEnvPrefix("GITSERVER")
+	v.SetEnvPrefix("STASIS")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
@@ -150,7 +142,7 @@ func Load(configPath string) (*Config, error) {
 		v.SetConfigName("config")
 		v.AddConfigPath(".")
 		v.AddConfigPath("./configs")
-		v.AddConfigPath("/etc/git-server")
+		v.AddConfigPath("/etc/stasis")
 
 		if err := v.ReadInConfig(); err != nil {
 			if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
@@ -186,9 +178,9 @@ func setDefaults(v *viper.Viper) {
 	// Database defaults
 	v.SetDefault("database.host", "localhost")
 	v.SetDefault("database.port", 5432)
-	v.SetDefault("database.user", "gitserver")
+	v.SetDefault("database.user", "stasis")
 	v.SetDefault("database.password", "password")
-	v.SetDefault("database.dbname", "gitserver")
+	v.SetDefault("database.dbname", "stasis")
 	v.SetDefault("database.sslmode", "disable")
 
 	// Storage defaults
@@ -211,11 +203,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("oidc.scopes", []string{"openid", "profile", "email"})
 	v.SetDefault("oidc.jwt_secret", "change-this-secret-in-production")
 
-	// OPA defaults (using embedded Go SDK)
-	v.SetDefault("opa.enabled", false)
-	v.SetDefault("opa.policy_path", "./policies/rbac.rego")
-	v.SetDefault("opa.query", "data.gitserver.authz.allow")
-
 	// Logging defaults
 	v.SetDefault("logging.level", "info")
 	v.SetDefault("logging.output_path", "stdout")
@@ -225,7 +212,7 @@ func setDefaults(v *viper.Viper) {
 // overrideFromEnv handles special environment variable overrides
 func overrideFromEnv(v *viper.Viper) {
 	// Database password from env
-	if dbPass := os.Getenv("GITSERVER_DB_PASSWORD"); dbPass != "" {
+	if dbPass := os.Getenv("STASIS_DB_PASSWORD"); dbPass != "" {
 		v.Set("database.password", dbPass)
 	}
 
@@ -238,16 +225,16 @@ func overrideFromEnv(v *viper.Viper) {
 	}
 
 	// OIDC credentials from env (more secure than config file)
-	if oidcClientID := os.Getenv("GITSERVER_OIDC_CLIENT_ID"); oidcClientID != "" {
+	if oidcClientID := os.Getenv("STASIS_OIDC_CLIENT_ID"); oidcClientID != "" {
 		v.Set("oidc.client_id", oidcClientID)
 	}
-	if oidcClientSecret := os.Getenv("GITSERVER_OIDC_CLIENT_SECRET"); oidcClientSecret != "" {
+	if oidcClientSecret := os.Getenv("STASIS_OIDC_CLIENT_SECRET"); oidcClientSecret != "" {
 		v.Set("oidc.client_secret", oidcClientSecret)
 	}
-	if oidcJWTSecret := os.Getenv("GITSERVER_OIDC_JWT_SECRET"); oidcJWTSecret != "" {
+	if oidcJWTSecret := os.Getenv("STASIS_OIDC_JWT_SECRET"); oidcJWTSecret != "" {
 		v.Set("oidc.jwt_secret", oidcJWTSecret)
 	}
-	if oidcFrontendURL := os.Getenv("GITSERVER_OIDC_FRONTEND_URL"); oidcFrontendURL != "" {
+	if oidcFrontendURL := os.Getenv("STASIS_OIDC_FRONTEND_URL"); oidcFrontendURL != "" {
 		v.Set("oidc.frontend_url", oidcFrontendURL)
 	}
 }
@@ -287,13 +274,6 @@ func (c *Config) Validate() error {
 	if c.SSH.Enabled {
 		if c.SSH.Port <= 0 || c.SSH.Port > 65535 {
 			return fmt.Errorf("invalid SSH port: %d", c.SSH.Port)
-		}
-	}
-
-	// Validate OPA config if enabled
-	if c.OPA.Enabled {
-		if c.OPA.PolicyPath == "" {
-			return fmt.Errorf("OPA policy path is required when OPA is enabled")
 		}
 	}
 
