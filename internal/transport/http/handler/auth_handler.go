@@ -128,7 +128,6 @@ func (h *AuthHandler) OIDCCallback(c *gin.Context) {
 	state := c.Query("state")
 	expectedState, err := c.Cookie(oidcStateCookie)
 	if err != nil {
-		fmt.Printf("failed to get state cookie: %v\n", err)
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   "bad_request",
 			"message": "Missing or expired state cookie",
@@ -142,7 +141,6 @@ func (h *AuthHandler) OIDCCallback(c *gin.Context) {
 	// Handle the callback - this exchanges the code for tokens and creates/updates the user
 	user, sessionToken, err := h.oidcService.HandleCallback(c.Request.Context(), code, state, expectedState)
 	if err != nil {
-		fmt.Printf("failed to handle callback: %v\n", err)
 		h.handleError(c, err)
 		return
 	}
