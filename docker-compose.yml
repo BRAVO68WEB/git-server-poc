@@ -52,6 +52,21 @@ services:
       - repo_data:/app/data/repos
       - ./configs/config.yaml:/app/configs/config.yaml:ro
     restart: unless-stopped
+    env_file:
+      - configs/.env
+    develop:
+      watch:
+        - action: rebuild
+          path: ./cmd
+        - action: rebuild
+          path: ./internal
+        - action: rebuild
+          path: ./pkg
+        - action: rebuild
+          path: ./go.mod
+        - action: sync+restart
+          path: ./configs
+          target: /app/configs
 
   web:
     build:
@@ -71,6 +86,16 @@ services:
     depends_on:
       - api
     restart: unless-stopped
+    develop:
+      watch:
+        - action: sync
+          path: ./web
+          target: /app
+          ignore:
+            - node_modules/
+            - .next/
+        - action: rebuild
+          path: ./web/package.json
 
   postgres:
     image: postgres:15-alpine
