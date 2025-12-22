@@ -188,6 +188,8 @@ func (h *GitHandler) HandleReceivePack(c *gin.Context) {
 		return
 	}
 
+	// Set default branch if not already set (first push)
+	h.repoService.SetDefaultBranchOnPush(c.Request.Context(), repo)
 }
 
 // checkRepoAccess checks if the user can access the repository

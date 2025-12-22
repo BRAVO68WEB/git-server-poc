@@ -342,6 +342,7 @@ func (h *RepoHandler) UpdateRepository(c *gin.Context) {
 		repo.ID,
 		req.Description,
 		req.IsPrivate,
+		req.DefaultBranch,
 	)
 	if err != nil {
 		h.log.Error("Failed to update repository",

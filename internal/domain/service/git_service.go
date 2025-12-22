@@ -169,6 +169,12 @@ type GitService interface {
 	// GetDefaultBranch returns the default branch name for the repository
 	GetDefaultBranch(ctx context.Context, repoPath string) (string, error)
 
+	// SetDefaultBranch sets the default branch (HEAD) for the repository
+	SetDefaultBranch(ctx context.Context, repoPath, branchName string) error
+
+	// BranchExists checks if a branch exists in the repository
+	BranchExists(ctx context.Context, repoPath, branchName string) (bool, error)
+
 	// Commit operations
 	// GetCommits returns a list of commits for a given ref (branch/tag/commit hash)
 	// If ref is empty, uses the default branch

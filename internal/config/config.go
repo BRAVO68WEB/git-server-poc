@@ -93,7 +93,7 @@ type OIDCConfig struct {
 	IssuerURL    string   `mapstructure:"issuer_url"`    // OIDC provider's issuer URL (e.g., https://accounts.google.com)
 	ClientID     string   `mapstructure:"client_id"`     // OAuth2 client ID
 	ClientSecret string   `mapstructure:"client_secret"` // OAuth2 client secret
-	RedirectURL  string   `mapstructure:"redirect_url"`  // Callback URL (e.g., http://localhost:8080/api/v1/auth/oidc/callback)
+	RedirectURL  string   `mapstructure:"redirect_url"`  // Callback URL (e.g., http://localhost/api/v1/auth/oidc/callback)
 	FrontendURL  string   `mapstructure:"frontend_url"`  // Frontend URL for redirecting after OIDC callback (e.g., http://localhost:3000)
 	Scopes       []string `mapstructure:"scopes"`        // OIDC scopes (default: openid, profile, email)
 	JWTSecret    string   `mapstructure:"jwt_secret"`    // Secret for signing session JWTs

@@ -312,7 +312,13 @@ func (s *Server) handleGitCommand(sess ssh.Session, gitCmd, repoPath string) err
 	case "git-upload-pack":
 		return s.gitProtocol.HandleUploadPackSSH(ctx, repo.GitPath, sess, sess)
 	case "git-receive-pack":
-		return s.gitProtocol.HandleReceivePackSSH(ctx, repo.GitPath, sess, sess)
+		err := s.gitProtocol.HandleReceivePackSSH(ctx, repo.GitPath, sess, sess)
+		if err != nil {
+			return err
+		}
+		// Set default branch if not already set (first push)
+		s.repoService.SetDefaultBranchOnPush(ctx, repo)
+		return nil
 	case "git-upload-archive":
 		s.log.Warn("Unsupported Git command: git-upload-archive",
 			logger.String("session_id", sess.Context().SessionID()),

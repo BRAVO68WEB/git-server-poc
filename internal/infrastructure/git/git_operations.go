@@ -639,6 +639,62 @@ func (g *GitOperations) GetDefaultBranch(ctx context.Context, repoPath string) (
 	return "", nil
 }
 
+// SetDefaultBranch sets the default branch (HEAD) for a bare repository
+func (g *GitOperations) SetDefaultBranch(ctx context.Context, repoPath, branchName string) error {
+	g.log.Debug("Setting default branch",
+		logger.String("repo_path", repoPath),
+		logger.String("branch", branchName),
+	)
+
+	repo, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return fmt.Errorf("failed to open repository: %w", err)
+	}
+
+	// Verify the branch exists
+	refName := plumbing.NewBranchReferenceName(branchName)
+	_, err = repo.Reference(refName, true)
+	if err != nil {
+		if err == plumbing.ErrReferenceNotFound {
+			return fmt.Errorf("branch '%s' does not exist", branchName)
+		}
+		return fmt.Errorf("failed to verify branch: %w", err)
+	}
+
+	// Create a symbolic reference for HEAD pointing to the branch
+	headRef := plumbing.NewSymbolicReference(plumbing.HEAD, refName)
+	err = repo.Storer.SetReference(headRef)
+	if err != nil {
+		return fmt.Errorf("failed to set HEAD: %w", err)
+	}
+
+	g.log.Info("Default branch set successfully",
+		logger.String("repo_path", repoPath),
+		logger.String("branch", branchName),
+	)
+
+	return nil
+}
+
+// BranchExists checks if a branch exists in the repository
+func (g *GitOperations) BranchExists(ctx context.Context, repoPath, branchName string) (bool, error) {
+	repo, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return false, fmt.Errorf("failed to open repository: %w", err)
+	}
+
+	refName := plumbing.NewBranchReferenceName(branchName)
+	_, err = repo.Reference(refName, true)
+	if err != nil {
+		if err == plumbing.ErrReferenceNotFound {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to check branch: %w", err)
+	}
+
+	return true, nil
+}
+
 // GetObjectPath returns the file path for a loose object
 func GetObjectPath(repoPath, objectHash string) string {
 	if len(objectHash) < 3 {

@@ -74,31 +74,25 @@ services:
       dockerfile: Dockerfile.web
       args:
         - NEXT_PUBLIC_API_URL=http://localhost/api
-        - STASIS_SERVER_HOSTED_URL=http://localhost:8080
+        - STASIS_SERVER_HOSTED_URL=http://localhost
         - STASIS_SSH_HOST_NAME=localhost:2222
     container_name: githut-web
     expose:
       - "3000"
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost/api
-      - STASIS_SERVER_HOSTED_URL=http://localhost:8080
+      - STASIS_SERVER_HOSTED_URL=http://localhost
       - STASIS_SSH_HOST_NAME=localhost:2222
     depends_on:
       - api
     restart: unless-stopped
     develop:
       watch:
-        - action: sync
-          path: ./web
-          target: /app
-          ignore:
-            - node_modules/
-            - .next/
         - action: rebuild
-          path: ./web/package.json
+          path: ./web/**/*.{ts,tsx,js,jsx,json}
 
   postgres:
-    image: postgres:15-alpine
+    image: postgres:17-alpine
     container_name: githut-postgres
     environment:
       POSTGRES_USER: githut

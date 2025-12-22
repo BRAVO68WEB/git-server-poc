@@ -40,17 +40,17 @@ import { env } from "./env";
 // Get API URL - handle server vs client differently
 function getApiUrl(): string {
   const baseUrl = env.NEXT_PUBLIC_API_URL;
-  console.log("baseUrl", baseUrl);
 
   // If we're on the server side (SSR) and running in Docker (DOCKER_ENV is set),
   // replace localhost with nginx service name
   if (
     typeof window === "undefined" &&
-    baseUrl.includes("localhost") &&
-    process.env.DOCKER_ENV === "true"
+    baseUrl.includes("localhost")
   ) {
     return baseUrl.replace("localhost", "nginx");
   }
+
+  console.log("baseUrl", process.env.DOCKER_ENV);
 
   return baseUrl;
 }

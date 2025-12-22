@@ -165,7 +165,7 @@ func (s *RepoService) ListPublicRepositories(ctx context.Context, limit, offset 
 }
 
 // UpdateRepository updates a repository's metadata
-func (s *RepoService) UpdateRepository(ctx context.Context, id uuid.UUID, description *string, isPrivate *bool) (*models.Repository, error) {
+func (s *RepoService) UpdateRepository(ctx context.Context, id uuid.UUID, description *string, isPrivate *bool, defaultBranch *string) (*models.Repository, error) {
 	repo, err := s.repoRepo.FindByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -177,6 +177,31 @@ func (s *RepoService) UpdateRepository(ctx context.Context, id uuid.UUID, descri
 	}
 	if isPrivate != nil {
 		repo.IsPrivate = *isPrivate
+	}
+	if defaultBranch != nil {
+		// Verify the branch exists before updating
+		exists, err := s.gitService.BranchExists(ctx, repo.GitPath, *defaultBranch)
+		if err != nil {
+			s.log.Error("Failed to check if branch exists",
+				logger.Error(err),
+				logger.String("branch", *defaultBranch),
+			)
+			return nil, fmt.Errorf("failed to verify branch: %w", err)
+		}
+		if !exists {
+			return nil, apperrors.BadRequest("branch does not exist", apperrors.ErrInvalidInput)
+		}
+
+		// Update git HEAD to point to the new branch
+		if err := s.gitService.SetDefaultBranch(ctx, repo.GitPath, *defaultBranch); err != nil {
+			s.log.Error("Failed to set default branch in git",
+				logger.Error(err),
+				logger.String("branch", *defaultBranch),
+			)
+			return nil, fmt.Errorf("failed to set default branch: %w", err)
+		}
+
+		repo.DefaultBranch = *defaultBranch
 	}
 
 	if err := s.repoRepo.Update(ctx, repo); err != nil {
@@ -296,6 +321,83 @@ func (s *RepoService) DeleteBranch(ctx context.Context, repo *models.Repository,
 	}
 
 	return s.gitService.DeleteBranch(ctx, repo.GitPath, branchName)
+}
+
+// SetDefaultBranchOnPush sets the default branch for a repository after a push
+// This is called after a successful push to set the default branch if it's not already set
+func (s *RepoService) SetDefaultBranchOnPush(ctx context.Context, repo *models.Repository) error {
+	// Check if default branch is already set and valid
+	if repo.DefaultBranch != "" {
+		// Verify the current default branch still exists
+		exists, err := s.gitService.BranchExists(ctx, repo.GitPath, repo.DefaultBranch)
+		if err == nil && exists {
+			// Default branch is already set and valid, nothing to do
+			return nil
+		}
+	}
+
+	// Get the current HEAD from git (which should point to the pushed branch)
+	defaultBranch, err := s.gitService.GetDefaultBranch(ctx, repo.GitPath)
+	if err != nil {
+		s.log.Warn("Failed to get default branch from git",
+			logger.Error(err),
+			logger.String("repo_id", repo.ID.String()),
+		)
+		// Fall through to try finding any branch
+		defaultBranch = ""
+	}
+
+	// Check if the default branch from HEAD actually exists
+	if defaultBranch != "" {
+		exists, err := s.gitService.BranchExists(ctx, repo.GitPath, defaultBranch)
+		if err != nil || !exists {
+			s.log.Debug("HEAD points to non-existent branch",
+				logger.String("repo_id", repo.ID.String()),
+				logger.String("branch", defaultBranch),
+			)
+			defaultBranch = ""
+		}
+	}
+
+	if defaultBranch == "" {
+		// Try to find any branch
+		branches, err := s.gitService.ListBranches(ctx, repo.GitPath)
+		if err != nil || len(branches) == 0 {
+			s.log.Debug("No branches found in repository",
+				logger.String("repo_id", repo.ID.String()),
+			)
+			return nil
+		}
+		defaultBranch = branches[0].Name
+
+		// Update git HEAD to point to the actual branch
+		if err := s.gitService.SetDefaultBranch(ctx, repo.GitPath, defaultBranch); err != nil {
+			s.log.Error("Failed to set default branch in git",
+				logger.Error(err),
+				logger.String("repo_id", repo.ID.String()),
+				logger.String("branch", defaultBranch),
+			)
+			// Continue anyway to update the database
+		}
+	}
+
+	// Update the repository record
+	repo.DefaultBranch = defaultBranch
+	if err := s.repoRepo.Update(ctx, repo); err != nil {
+		s.log.Error("Failed to update default branch in database",
+			logger.Error(err),
+			logger.String("repo_id", repo.ID.String()),
+			logger.String("branch", defaultBranch),
+		)
+		return nil // Don't fail the push for this
+	}
+
+	s.log.Info("Default branch set after push",
+		logger.String("repo_id", repo.ID.String()),
+		logger.String("branch", defaultBranch),
+	)
+
+	return nil
 }
 
 // ListTags lists all tags in a repository
