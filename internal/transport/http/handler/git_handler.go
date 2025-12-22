@@ -3,7 +3,6 @@ package handler
 import (
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 
@@ -83,7 +82,6 @@ func (h *GitHandler) HandleInfoRefs(c *gin.Context) {
 		Service:  service,
 	})
 	if err != nil {
-		log.Printf("ERROR: GetInfoRefs failed for repo %s/%s (path: %s): %v", owner, repoName, repo.GitPath, err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "internal_error",
 			"message": "Failed to get repository info",

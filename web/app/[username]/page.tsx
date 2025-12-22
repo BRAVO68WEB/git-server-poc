@@ -1,4 +1,5 @@
-import { listPublicRepositories } from "@/lib/api";
+import { listPublicRepositories, listUserRepositories } from "@/lib/api";
+import { getServerCurrentUser } from "@/lib/server-auth";
 import Link from "next/link";
 
 export default async function UserReposPage({
@@ -19,19 +20,41 @@ export default async function UserReposPage({
     updated_at: string;
   }> = [];
   let failed = false;
+  let isOwnProfile = false;
 
+  // First, try to get the current user (won't throw, returns null if not authenticated)
+  let currentUser = null;
   try {
-    // Fetch public repositories and filter by username
-    const response = await listPublicRepositories(1, 100);
-    repos = response.repositories.filter((r) => r.owner === username);
+    currentUser = await getServerCurrentUser();
   } catch {
-    failed = true;
+    // Ignore auth errors - user is just not logged in
+  }
+
+  if (currentUser && currentUser.username === username) {
+    // Viewing own profile - show all repos (public + private)
+    isOwnProfile = true;
+    try {
+      const response = await listUserRepositories();
+      repos = response.repositories || [];
+    } catch (error) {
+      console.error("[UserReposPage] Failed to fetch user repos:", error);
+      failed = true;
+    }
+  } else {
+    // Not logged in OR viewing another user's profile - show only their public repos
+    try {
+      const response = await listPublicRepositories(1, 100);
+      repos = (response.repositories || []).filter((r) => r.owner === username);
+    } catch (error) {
+      console.error("[UserReposPage] Failed to fetch public repos:", error);
+      failed = true;
+    }
   }
 
   if (failed) {
     return (
       <div className="container mx-auto py-8 px-4">
-        <div className="p-6 text-sm text-base border border-base rounded-md bg-panel">
+        <div className="p-6 text-sm border border-zinc-200 dark:border-zinc-800 rounded-md bg-white dark:bg-zinc-900">
           Unable to load repositories.
         </div>
       </div>
@@ -41,28 +64,39 @@ export default async function UserReposPage({
   return (
     <div className="container mx-auto py-8 px-4">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-base">
-          Repositories for <span className="text-accent">{username}</span>
+        <h1 className="text-2xl font-bold">
+          {isOwnProfile ? (
+            <>Your Repositories</>
+          ) : (
+            <>
+              Repositories for{" "}
+              <span className="text-blue-600 dark:text-blue-400">
+                {username}
+              </span>
+            </>
+          )}
         </h1>
-        <Link
-          href="/new"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-md shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+        {isOwnProfile && (
+          <Link
+            href="/new"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-md shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
           >
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          New Repository
-        </Link>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            New Repository
+          </Link>
+        )}
       </div>
 
       {repos.length === 0 ? (
@@ -84,33 +118,62 @@ export default async function UserReposPage({
           </svg>
           <p className="text-zinc-500 font-medium">No repositories found.</p>
           <p className="text-zinc-400 text-sm mt-1">
-            {username} hasn&apos;t created any public repositories yet.
+            {isOwnProfile
+              ? "You haven't created any repositories yet."
+              : `${username} hasn't created any public repositories yet.`}
           </p>
+          {isOwnProfile && (
+            <Link
+              href="/new"
+              className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-md shadow-sm transition-colors"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              Create your first repository
+            </Link>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {repos.map((repo) => (
             <div
               key={repo.id}
-              className="border border-base rounded-md bg-panel p-4 hover:border-blue-500 dark:hover:border-blue-500 transition-colors"
+              className="border border-zinc-200 dark:border-zinc-800 rounded-md bg-white dark:bg-zinc-900 p-4 hover:border-blue-500 dark:hover:border-blue-500 transition-colors"
             >
               <div className="flex items-center gap-2">
                 <Link
                   href={`/${username}/${repo.name}`}
-                  className="text-accent font-semibold hover:underline"
+                  className="text-blue-600 dark:text-blue-400 font-semibold hover:underline"
                 >
                   {repo.name}
                 </Link>
-                <span className="ml-2 text-xs px-2 py-0.5 rounded-full border border-base text-muted uppercase font-medium">
+                <span
+                  className={`ml-2 text-xs px-2 py-0.5 rounded-full border uppercase font-medium ${
+                    repo.is_private
+                      ? "bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-700"
+                      : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700"
+                  }`}
+                >
                   {repo.is_private ? "private" : "public"}
                 </span>
               </div>
               {repo.description && (
-                <p className="mt-2 text-sm text-muted line-clamp-2">
+                <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400 line-clamp-2">
                   {repo.description}
                 </p>
               )}
-              <div className="mt-3 flex items-center gap-4 text-xs text-muted">
+              <div className="mt-3 flex items-center gap-4 text-xs text-zinc-500">
                 <span>
                   Updated{" "}
                   {new Date(repo.updated_at).toLocaleDateString("en-US", {

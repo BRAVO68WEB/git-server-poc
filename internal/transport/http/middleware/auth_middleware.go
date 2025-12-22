@@ -220,32 +220,3 @@ func GetUserFromRequestContext(ctx context.Context) *models.User {
 	}
 	return nil
 }
-
-// OptionalAuth is an alias for Authenticate for readability
-func (m *AuthMiddleware) OptionalAuth() gin.HandlerFunc {
-	return m.Authenticate()
-}
-
-// AuthForGit handles authentication for Git HTTP protocol
-// It considers public repositories for read operations
-func (m *AuthMiddleware) AuthForGit(isWrite bool) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		user := m.extractAndValidateUser(c)
-
-		// For write operations, always require auth
-		if isWrite && user == nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error":   "unauthorized",
-				"message": "authentication required for push",
-			})
-			return
-		}
-
-		// Set user if authenticated
-		if user != nil {
-			m.setUserContext(c, user)
-		}
-
-		c.Next()
-	}
-}

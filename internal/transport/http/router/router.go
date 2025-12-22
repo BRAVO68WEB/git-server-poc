@@ -3,7 +3,7 @@ package router
 import (
 	"github.com/bravo68web/stasis/internal/injectable"
 	"github.com/bravo68web/stasis/internal/server"
-	"github.com/gin-contrib/cors"
+	"github.com/bravo68web/stasis/internal/transport/http/middleware"
 )
 
 type Router struct {
@@ -34,32 +34,8 @@ func (r *Router) RegisterRoutes() {
 		allowedOrigins = append(allowedOrigins, r.server.Config.OIDC.FrontendURL)
 	}
 
-	// Apply CORS middleware with cookie support
-	r.server.Use(cors.New(cors.Config{
-		AllowOrigins: allowedOrigins,
-		AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"},
-		AllowHeaders: []string{
-			"Origin",
-			"Content-Length",
-			"Content-Type",
-			"Authorization",
-			"Accept",
-			"Accept-Encoding",
-			"Accept-Language",
-			"Cache-Control",
-			"Cookie",
-			"X-Requested-With",
-			"X-Auth-Token",
-		},
-		ExposeHeaders: []string{
-			"Content-Length",
-			"Content-Type",
-			"Set-Cookie",
-			"Authorization",
-		},
-		AllowCredentials: true,
-		MaxAge:           12 * 60 * 60, // 12 hours preflight cache
-	}))
+	// Apply CORS middleware
+	r.server.Use(middleware.CORSMiddleware(allowedOrigins))
 
 	r.docsRouter()
 
