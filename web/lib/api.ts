@@ -42,11 +42,16 @@ function getApiUrl(): string {
   const baseUrl = env.NEXT_PUBLIC_API_URL;
   console.log("baseUrl", baseUrl);
 
-  // If we're on the server side (SSR) and URL contains localhost, use nginx service
-  if (typeof window === "undefined" && baseUrl.includes("localhost")) {
+  // If we're on the server side (SSR) and running in Docker (DOCKER_ENV is set),
+  // replace localhost with nginx service name
+  if (
+    typeof window === "undefined" &&
+    baseUrl.includes("localhost") &&
+    process.env.DOCKER_ENV === "true"
+  ) {
     return baseUrl.replace("localhost", "nginx");
   }
-  
+
   return baseUrl;
 }
 
@@ -576,12 +581,16 @@ export async function getTree(
 
   const headers = await getLegacyAuthHeaders();
 
-    let url = `${getApiUrl()}/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/tree/${encodeURIComponent(ref)}`;
+  let url = `${getApiUrl()}/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/tree/${encodeURIComponent(ref)}`;
   if (path) {
     url += `/${path.split("/").map(encodeURIComponent).join("/")}`;
   }
 
-  const res = await fetch(url, { cache: "no-store", headers, credentials: "include" });
+  const res = await fetch(url, {
+    cache: "no-store",
+    headers,
+    credentials: "include",
+  });
   if (!res.ok) throw new Error("Failed to fetch tree");
 
   const data: TreeResponse = await res.json();
@@ -613,7 +622,11 @@ export async function getBlob(
 
   const url = `${getApiUrl()}/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/blob/${encodeURIComponent(ref)}/${path.split("/").map(encodeURIComponent).join("/")}`;
 
-  const res = await fetch(url, { cache: "no-store", headers, credentials: "include" });
+  const res = await fetch(url, {
+    cache: "no-store",
+    headers,
+    credentials: "include",
+  });
   if (!res.ok) throw new Error("Failed to fetch blob");
 
   const data: FileContentResponse = await res.json();
@@ -647,9 +660,13 @@ export async function getCommits(
     per_page: perPage.toString(),
   });
 
-    const url = `${getApiUrl()}/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/commits?${params}`;
+  const url = `${getApiUrl()}/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/commits?${params}`;
 
-  const res = await fetch(url, { cache: "no-store", headers, credentials: "include" });
+  const res = await fetch(url, {
+    cache: "no-store",
+    headers,
+    credentials: "include",
+  });
   if (!res.ok) throw new Error("Failed to fetch commits");
 
   const data: CommitListResponse = await res.json();
@@ -674,7 +691,11 @@ export async function getBranches(
     // Fallback to old API if new one fails
     const headers = await getLegacyAuthHeaders();
     const url = `${getApiUrl()}/v1/repos/${owner}/${name}/branches`;
-    const res = await fetch(url, { cache: "no-store", headers, credentials: "include" });
+    const res = await fetch(url, {
+      cache: "no-store",
+      headers,
+      credentials: "include",
+    });
     if (!res.ok) throw new Error("Failed to fetch branches");
     return res.json();
   }
@@ -688,7 +709,11 @@ export async function getDiff(
   const headers = await getLegacyAuthHeaders();
 
   const url = `${getApiUrl()}/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/diff/${encodeURIComponent(hash)}`;
-  const res = await fetch(url, { cache: "no-store", headers, credentials: "include" });
+  const res = await fetch(url, {
+    cache: "no-store",
+    headers,
+    credentials: "include",
+  });
   if (!res.ok) throw new Error("Failed to fetch diff");
   return res.json();
 }
@@ -708,7 +733,11 @@ export async function getBlame(
 
   const url = `${getApiUrl()}/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/blame/${encodeURIComponent(ref)}/${path.split("/").map(encodeURIComponent).join("/")}`;
 
-  const res = await fetch(url, { cache: "no-store", headers, credentials: "include" });
+  const res = await fetch(url, {
+    cache: "no-store",
+    headers,
+    credentials: "include",
+  });
   if (!res.ok) throw new Error("Failed to fetch blame");
 
   const data = await res.json();

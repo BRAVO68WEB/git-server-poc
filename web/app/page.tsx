@@ -6,7 +6,7 @@ import {
   listPublicRepositories,
   listUserRepositories,
   isAuthenticated,
-  getStoredUserInfo,
+  getCurrentUser,
 } from "@/lib/api";
 
 interface Repository {
@@ -32,19 +32,46 @@ export default function Home() {
       setError(false);
 
       try {
-        const authenticated = isAuthenticated();
+        // Check if we have a token stored
+        const hasToken = isAuthenticated();
+        let authenticated = false;
+
+        if (hasToken) {
+          // Verify the token is still valid by calling the API
+          try {
+            const currentUser = await getCurrentUser();
+            if (currentUser) {
+              authenticated = true;
+              setUsername(currentUser.username);
+            }
+          } catch {
+            // Token is invalid or expired, treat as not authenticated
+            authenticated = false;
+          }
+        }
+
         setIsLoggedIn(authenticated);
 
         if (authenticated) {
-          // Get user info for display
-          const userInfo = getStoredUserInfo();
-          if (userInfo) {
-            setUsername(userInfo.username);
-          }
-
           // Fetch user's own repositories (includes private repos)
-          const response = await listUserRepositories();
-          setRepos(response.repositories || []);
+          // and public repositories in parallel
+          const [userReposResponse, publicReposResponse] = await Promise.all([
+            listUserRepositories().catch(() => ({ repositories: [] })),
+            listPublicRepositories(1, 100).catch(() => ({ repositories: [] })),
+          ]);
+
+          const userRepos = userReposResponse.repositories || [];
+          const publicRepos = publicReposResponse.repositories || [];
+
+          // Merge user repos with public repos, avoiding duplicates
+          // User's repos take priority (they may include private repos)
+          const userRepoIds = new Set(userRepos.map((r) => r.id));
+          const otherPublicRepos = publicRepos.filter(
+            (r) => !userRepoIds.has(r.id),
+          );
+
+          // Combine: user's repos first, then other public repos
+          setRepos([...userRepos, ...otherPublicRepos]);
         } else {
           // Fetch public repositories for unauthenticated users
           const response = await listPublicRepositories(1, 50);
@@ -77,7 +104,7 @@ export default function Home() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">
-            {isLoggedIn ? "Your Repositories" : "Public Repositories"}
+            {isLoggedIn ? "Repositories" : "Public Repositories"}
           </h1>
           {isLoggedIn && username && (
             <p className="text-muted mt-1">
@@ -165,7 +192,7 @@ export default function Home() {
             </svg>
             <p className="text-zinc-500 font-medium">
               {isLoggedIn
-                ? "You don't have any repositories yet."
+                ? "No repositories found."
                 : "No public repositories found."}
             </p>
             <p className="text-zinc-400 text-sm mt-1">
