@@ -193,7 +193,7 @@ func (s *RepoService) UpdateRepository(ctx context.Context, id uuid.UUID, descri
 		}
 
 		// Update git HEAD to point to the new branch
-		if err := s.gitService.SetDefaultBranch(ctx, repo.GitPath, *defaultBranch); err != nil {
+		if err := s.gitService.SetHEADBranch(ctx, repo.GitPath, *defaultBranch); err != nil {
 			s.log.Error("Failed to set default branch in git",
 				logger.Error(err),
 				logger.String("branch", *defaultBranch),
@@ -315,7 +315,7 @@ func (s *RepoService) CreateBranch(ctx context.Context, repo *models.Repository,
 // DeleteBranch deletes a branch from a repository
 func (s *RepoService) DeleteBranch(ctx context.Context, repo *models.Repository, branchName string) error {
 	// Check if it's the default branch
-	defaultBranch, err := s.gitService.GetDefaultBranch(ctx, repo.GitPath)
+	defaultBranch, err := s.gitService.GetHEADBranch(ctx, repo.GitPath)
 	if err == nil && defaultBranch == branchName {
 		return apperrors.BadRequest("cannot delete default branch", apperrors.ErrDefaultBranch)
 	}
@@ -337,7 +337,7 @@ func (s *RepoService) SetDefaultBranchOnPush(ctx context.Context, repo *models.R
 	}
 
 	// Get the current HEAD from git (which should point to the pushed branch)
-	defaultBranch, err := s.gitService.GetDefaultBranch(ctx, repo.GitPath)
+	defaultBranch, err := s.gitService.GetHEADBranch(ctx, repo.GitPath)
 	if err != nil {
 		s.log.Warn("Failed to get default branch from git",
 			logger.Error(err),
@@ -371,7 +371,7 @@ func (s *RepoService) SetDefaultBranchOnPush(ctx context.Context, repo *models.R
 		defaultBranch = branches[0].Name
 
 		// Update git HEAD to point to the actual branch
-		if err := s.gitService.SetDefaultBranch(ctx, repo.GitPath, defaultBranch); err != nil {
+		if err := s.gitService.SetHEADBranch(ctx, repo.GitPath, defaultBranch); err != nil {
 			s.log.Error("Failed to set default branch in git",
 				logger.Error(err),
 				logger.String("repo_id", repo.ID.String()),

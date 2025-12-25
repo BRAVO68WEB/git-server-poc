@@ -3,6 +3,7 @@ package git
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -172,8 +173,8 @@ func (g *GitOperations) GetRefs(ctx context.Context, repoPath string) (map[strin
 	return refs, nil
 }
 
-// GetHEAD returns the current HEAD reference
-func (g *GitOperations) GetHEAD(ctx context.Context, repoPath string) (string, error) {
+// GetHEADRef returns the current HEAD reference
+func (g *GitOperations) GetHEADRef(ctx context.Context, repoPath string) (string, error) {
 	repo, err := git.PlainOpen(repoPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to open repository: %w", err)
@@ -613,8 +614,8 @@ func (g *GitOperations) RemoveRemote(ctx context.Context, repoPath, name string)
 	return nil
 }
 
-// GetDefaultBranch returns the default branch name (usually main or master)
-func (g *GitOperations) GetDefaultBranch(ctx context.Context, repoPath string) (string, error) {
+// GetHEADBranch returns the default branch name (usually main or master)
+func (g *GitOperations) GetHEADBranch(ctx context.Context, repoPath string) (string, error) {
 	repo, err := git.PlainOpen(repoPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to open repository: %w", err)
@@ -639,8 +640,8 @@ func (g *GitOperations) GetDefaultBranch(ctx context.Context, repoPath string) (
 	return "", nil
 }
 
-// SetDefaultBranch sets the default branch (HEAD) for a bare repository
-func (g *GitOperations) SetDefaultBranch(ctx context.Context, repoPath, branchName string) error {
+// SetHEADBranch sets the default branch (HEAD) for a bare repository
+func (g *GitOperations) SetHEADBranch(ctx context.Context, repoPath, branchName string) error {
 	g.log.Debug("Setting default branch",
 		logger.String("repo_path", repoPath),
 		logger.String("branch", branchName),
@@ -655,7 +656,7 @@ func (g *GitOperations) SetDefaultBranch(ctx context.Context, repoPath, branchNa
 	refName := plumbing.NewBranchReferenceName(branchName)
 	_, err = repo.Reference(refName, true)
 	if err != nil {
-		if err == plumbing.ErrReferenceNotFound {
+		if errors.Is(err, plumbing.ErrReferenceNotFound) {
 			return fmt.Errorf("branch '%s' does not exist", branchName)
 		}
 		return fmt.Errorf("failed to verify branch: %w", err)

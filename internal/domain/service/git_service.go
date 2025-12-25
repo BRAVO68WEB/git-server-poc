@@ -114,8 +114,8 @@ type GitService interface {
 	// GetRefs returns all references (branches and tags) in the repository
 	GetRefs(ctx context.Context, repoPath string) (map[string]string, error)
 
-	// GetHEAD returns the current HEAD reference
-	GetHEAD(ctx context.Context, repoPath string) (string, error)
+	// GetHEADRef returns the current HEAD reference
+	GetHEADRef(ctx context.Context, repoPath string) (string, error)
 
 	// Branch operations
 	// CreateBranch creates a new branch pointing to the specified commit
@@ -166,11 +166,11 @@ type GitService interface {
 	// ObjectExists checks if an object exists in the repository
 	ObjectExists(ctx context.Context, repoPath, objectHash string) (bool, error)
 
-	// GetDefaultBranch returns the default branch name for the repository
-	GetDefaultBranch(ctx context.Context, repoPath string) (string, error)
+	// GetHEADBranch returns the default branch name for the repository
+	GetHEADBranch(ctx context.Context, repoPath string) (string, error)
 
-	// SetDefaultBranch sets the default branch (HEAD) for the repository
-	SetDefaultBranch(ctx context.Context, repoPath, branchName string) error
+	// SetHEADBranch sets the default branch (HEAD) for the repository
+	SetHEADBranch(ctx context.Context, repoPath, branchName string) error
 
 	// BranchExists checks if a branch exists in the repository
 	BranchExists(ctx context.Context, repoPath, branchName string) (bool, error)
