@@ -1,17 +1,36 @@
-import { getCommits } from '@/lib/api';
-import Link from 'next/link';
+import { getCommits } from "@/lib/api";
+import Link from "next/link";
 
 export default async function CommitsPage({
   params,
 }: {
-  params: Promise<{ username: string; repo: string; ref: string; path?: string[] }>;
+  params: Promise<{
+    username: string;
+    repo: string;
+    ref: string;
+    path?: string[];
+  }>;
 }) {
   const { username, repo, ref: refParam, path: pathSegments } = await params;
-  const fullPath = [decodeURIComponent(refParam), ...(pathSegments || []).map(p => decodeURIComponent(p))].join('/');
+  const fullPath = [
+    decodeURIComponent(refParam),
+    ...(pathSegments || []).map((p) => decodeURIComponent(p)),
+  ].join("/");
 
-  let ref = '';
-  let path = '';
-  let commits: Array<{ hash: string; author: string; date: string; message: string }> = [];
+  let ref = "";
+  let path = "";
+  let commits: Array<{
+    hash: string;
+    short_hash: string;
+    author: string;
+    author_email: string;
+    author_date: string;
+    committer: string;
+    committer_email: string;
+    committer_date: string;
+    message: string;
+    parent_hashes: string[];
+  }> = [];
   let failed = false;
 
   try {
@@ -29,7 +48,7 @@ export default async function CommitsPage({
         <div className="px-4 py-3 border-b border-base">
           <span className="font-semibold text-base">Commits</span>
         </div>
-        <div className="p-4 text-sm text-base">
+        <div className="p-4 text-base">
           Unable to load commits.
           <div className="mt-2">
             <Link
@@ -59,9 +78,7 @@ export default async function CommitsPage({
             </>
           )}
         </div>
-        <div className="p-6 text-sm text-base">
-          No commits found.
-        </div>
+        <div className="p-6 text-base">No commits found.</div>
       </div>
     );
   }
@@ -80,16 +97,22 @@ export default async function CommitsPage({
           </>
         )}
       </div>
-      <div className="divide-y divide-[var(--border-base)]">
+      <div className="divide-y divide-(--border-base)">
         {commits.map((commit) => (
-          <div key={commit.hash} className="p-4 hover:bg-base transition-colors flex items-start gap-4">
+          <div
+            key={commit.hash}
+            className="p-4 hover:bg-base transition-colors flex items-start gap-4"
+          >
             <div className="flex-1 min-w-0">
               <p className="font-semibold text-base truncate">
                 {commit.message}
               </p>
               <div className="flex items-center gap-2 mt-1 text-xs text-muted">
                 <span className="font-medium text-base">{commit.author}</span>
-                <span>committed on {new Date(commit.date).toLocaleDateString()}</span>
+                <span>
+                  committed on{" "}
+                  {new Date(commit.author_date).toLocaleDateString()}
+                </span>
               </div>
             </div>
             <div className="flex items-center">

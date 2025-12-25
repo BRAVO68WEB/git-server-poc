@@ -1,18 +1,44 @@
 root = "."
-tmp_dir = "tmp"
+testdata_dir = "testdata"
+tmp_dir = "bin"
 
 [build]
-cmd = "go build -o tmp/githut ./cmd/githut"
-bin = "tmp/githut"
-full_bin = "TMP_DIR=tmp ./tmp/githut serve"
-delay = 1000
-stop_on_error = true
+  args_bin = []
+  delay = 100
+  exclude_dir = ["tmp", "bin", "testdata", "web"]
+  exclude_file = []
+  exclude_regex = ["_test.go", ".*_templ.go"]
+  exclude_unchanged = false
+  follow_symlink = false
+  full_bin = ""
+  include_dir = []
+  include_ext = ["go", "tpl", "tmpl", "html", "templ", "css", "scss", "js", "ts", "sql", "jpeg", "jpg", "gif", "png", "bmp", "svg", "webp", "ico", "pkl"]
+  include_file = []
+  kill_delay = "0s"
+  log = "build-errors.log"
+  poll = false
+  poll_interval = 0
+  post_cmd = []
+  pre_cmd = []
+  rerun = false
+  rerun_delay = 500
+  send_interrupt = false
+  stop_on_error = false
+
+[color]
+  app = ""
+  build = "yellow"
+  main = "magenta"
+  runner = "green"
+  watcher = "cyan"
 
 [log]
-time = true
+  main_only = false
+  time = true
 
-[watch]
-include_dir = ["cmd", "internal", "migrations"]
-exclude_dir = ["tmp", "dist", ".git"]
-include_ext = ["go", "sql"]
-exclude_file = []
+[misc]
+  clean_on_exit = true
+
+[screen]
+  clear_on_rebuild = false
+  keep_scroll = true

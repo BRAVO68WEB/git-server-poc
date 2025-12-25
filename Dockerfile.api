@@ -1,0 +1,55 @@
+# Build stage
+FROM golang:1.25-alpine AS builder
+
+RUN apk add --no-cache git ca-certificates
+
+WORKDIR /src
+
+# Copy go mod files first for better caching
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
+
+# Copy source code
+COPY . .
+
+# Build the server binary
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /out/stasis-server ./cmd/server
+
+# Runtime stage
+FROM alpine:3.21
+
+RUN apk add --no-cache ca-certificates git tzdata wget curl
+
+WORKDIR /app
+
+# Copy binary from builder
+COPY --from=builder /out/stasis-server /usr/local/bin/stasis-server
+
+# Copy config files
+COPY configs/config.yaml.example /app/configs/config.yaml
+
+# Create data directory
+RUN mkdir -p /app/data/repos
+
+# Install Atlas CLI for database migrations
+RUN curl -sSf https://atlasgo.sh | sh
+# The installer typically installs to ~/.atlas/bin/atlas, ensure it's in PATH
+RUN if [ -f /root/.atlas/bin/atlas ]; then \
+        cp /root/.atlas/bin/atlas /usr/local/bin/atlas && \
+        chmod +x /usr/local/bin/atlas; \
+    elif [ -f /usr/local/bin/atlas ]; then \
+        chmod +x /usr/local/bin/atlas; \
+    else \
+        echo "ERROR: Atlas binary not found after installation" && exit 1; \
+    fi
+# Verify installation
+RUN /usr/local/bin/atlas version
+
+EXPOSE 8080 2222
+
+HEALTHCHECK --interval=10s --timeout=3s --start-period=10s \
+    CMD wget -qO- http://localhost:8080/ || exit 1
+
+ENTRYPOINT ["/usr/local/bin/stasis-server"]

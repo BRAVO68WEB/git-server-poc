@@ -1,5 +1,5 @@
-import { getBranches, getCommits } from '@/lib/api';
-import Link from 'next/link';
+import { getBranches, getCommits } from "@/lib/api";
+import Link from "next/link";
 
 export default async function CommitsIndexPage({
   params,
@@ -7,13 +7,24 @@ export default async function CommitsIndexPage({
   params: Promise<{ username: string; repo: string }>;
 }) {
   const { username, repo } = await params;
-  let ref = 'HEAD';
-  let commits: Array<{ hash: string; author: string; date: string; message: string }> = [];
+  let ref = "HEAD";
+  let commits: Array<{
+    hash: string;
+    short_hash: string;
+    author: string;
+    author_email: string;
+    author_date: string;
+    committer: string;
+    committer_email: string;
+    committer_date: string;
+    message: string;
+    parent_hashes: string[];
+  }> = [];
   let failed = false;
 
   try {
     const branches = await getBranches(username, repo);
-    const defaultBranch = branches.find(b => b.is_head) || branches[0];
+    const defaultBranch = branches.find((b) => b.is_head) || branches[0];
     if (defaultBranch) {
       ref = defaultBranch.name;
     }
@@ -26,10 +37,13 @@ export default async function CommitsIndexPage({
 
   if (failed) {
     return (
-      <div className="p-6 text-sm text-base border border-base rounded-md bg-panel">
+      <div className="p-6 text-sm border border-base rounded-md bg-panel">
         Unable to load commits.
         <div className="mt-2">
-          <Link href={`/${username}/${repo}`} className="text-accent hover:underline">
+          <Link
+            href={`/${username}/${repo}`}
+            className="text-accent hover:underline"
+          >
             Back to repository
           </Link>
         </div>
@@ -45,16 +59,22 @@ export default async function CommitsIndexPage({
           {ref}
         </span>
       </div>
-      <div className="divide-y divide-[var(--border-base)]">
+      <div className="divide-y divide-(--border-base)">
         {commits.map((commit) => (
-          <div key={commit.hash} className="p-4 hover:bg-base transition-colors flex items-start gap-4">
+          <div
+            key={commit.hash}
+            className="p-4 hover:bg-base transition-colors flex items-start gap-4"
+          >
             <div className="flex-1 min-w-0">
               <p className="font-semibold text-base truncate">
                 {commit.message}
               </p>
               <div className="flex items-center gap-2 mt-1 text-xs text-muted">
                 <span className="font-medium text-base">{commit.author}</span>
-                <span>committed on {new Date(commit.date).toLocaleDateString()}</span>
+                <span>
+                  committed on{" "}
+                  {new Date(commit.author_date).toLocaleDateString()}
+                </span>
               </div>
             </div>
             <div className="flex items-center">
