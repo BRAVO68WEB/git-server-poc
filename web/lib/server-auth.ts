@@ -56,7 +56,23 @@ export async function serverApiRequest<T>(
   endpoint: string,
   options: RequestInit = {},
 ): Promise<T> {
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+  // Use NEXT_PUBLIC_API_URL if set, otherwise use default
+  // For server-side in Docker, replace localhost with nginx service name
+  // For client-side, http://localhost/api works fine (browser makes request to nginx)
+  let API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost/api";
+  console.log("API_URL", API_URL);
+
+  // If we're on the server side and running in Docker (DOCKER_ENV is set),
+  // replace localhost with nginx service name
+  if (
+    typeof window === "undefined" &&
+    API_URL.includes("localhost")
+  ) {
+    API_URL = API_URL.replace("localhost", "nginx");
+  }
+
+  console.log("Final API_URL", process.env.DOCKER_ENV);
+
   const authHeaders = await getServerAuthHeaders();
 
   const res = await fetch(`${API_URL}${endpoint}`, {
@@ -77,4 +93,21 @@ export async function serverApiRequest<T>(
   }
 
   return res.json();
+}
+
+/**
+ * Get the current user by verifying the token with the API (server-side)
+ * Returns null if not authenticated or token is invalid
+ */
+export async function getServerCurrentUser(): Promise<UserInfo | null> {
+  try {
+    const token = await getServerAuthToken();
+    if (!token) return null;
+
+    const user = await serverApiRequest<UserInfo>("/api/v1/auth/me");
+    return user;
+  } catch {
+    // Token is invalid or expired
+    return null;
+  }
 }

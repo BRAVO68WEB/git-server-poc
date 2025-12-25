@@ -1,4 +1,4 @@
-# Git Server Configuration
+# Stasis Server Configuration
 
 server:
   host: "0.0.0.0"
@@ -42,6 +42,8 @@ oidc:
   client_secret: ""
   # Callback URL where the OIDC provider will redirect after authentication
   redirect_url: "http://localhost:8080/api/v1/auth/oidc/callback"
+  # Frontend URL for redirecting after OIDC callback
+  frontend_url: "http://localhost:3000"
   # OIDC scopes to request (default: openid, profile, email)
   scopes:
     - "openid"
@@ -50,16 +52,58 @@ oidc:
   # Secret for signing session JWTs (use env var STASIS_OIDC_JWT_SECRET in production)
   jwt_secret: "change-this-secret-in-production"
 
-# OPA (Open Policy Agent) Authorization
-# Uses the embedded OPA Go SDK - no external server required
-opa:
-  enabled: false
-  # Path to the Rego policy file
-  policy_path: "./policies/rbac.rego"
-  # OPA query to evaluate (default: data.stasis.authz.allow)
-  query: "data.stasis.authz.allow"
-
+# Logging Configuration
+# Supports three output modes: console, file, or otel (OpenTelemetry)
 logging:
-  level: "info"  # debug, info, warn, error
-  output_path: "stdout"  # stdout, stderr, or file path
-  format: "json"  # json, console
+  # Log level: debug, info, warn, error
+  level: "info"
+
+  # Output destination: console, file, or otel
+  # - console: Logs to stdout (default)
+  # - file: Logs to a file with rotation support
+  # - otel: Sends logs to an OpenTelemetry collector
+  output: "console"
+
+  # Log format: json or console
+  # - json: Structured JSON format (recommended for production)
+  # - console: Human-readable format (recommended for development)
+  format: "json"
+
+  # Enable development mode for more verbose output and colored console logs
+  development: false
+
+  # Add caller information (file:line) to log entries
+  add_caller: true
+
+  # File output configuration (only used when output is "file")
+  # Path to the log file
+  file_path: "./logs/stasis.log"
+  # Maximum size of log file in megabytes before rotation
+  file_max_size_mb: 100
+  # Maximum number of old log files to retain
+  file_max_backups: 3
+  # Maximum number of days to retain old log files
+  file_max_age_days: 28
+  # Compress rotated log files using gzip
+  file_compress: true
+
+  # OpenTelemetry (OTEL) configuration (only used when output is "otel")
+  otel:
+    # Enable OTEL logging
+    enabled: false
+    # OTEL collector endpoint (gRPC or HTTP)
+    # For gRPC: "localhost:4317"
+    # For HTTP: "localhost:4318"
+    endpoint: "localhost:4317"
+    # Service name for OTEL
+    service_name: "stasis"
+    # Service version
+    service_version: "1.0.0"
+    # Deployment environment (e.g., development, staging, production)
+    environment: "development"
+    # Use insecure connection (no TLS) - set to false in production
+    insecure: true
+    # Additional headers to send with OTEL requests (e.g., for authentication)
+    # headers:
+    #   Authorization: "Bearer your-token"
+    #   X-Custom-Header: "value"

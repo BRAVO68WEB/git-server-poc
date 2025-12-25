@@ -19,4 +19,8 @@ const nextConfig: NextConfig = {
   /* config options here */
 };
 
+console.log("ENV", process.env.NEXT_PUBLIC_API_URL);
+console.log("ENV", process.env.STASIS_SERVER_HOSTED_URL);
+console.log("ENV", process.env.STASIS_SSH_HOST_NAME);
+
 export default nextConfig;

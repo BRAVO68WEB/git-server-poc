@@ -90,9 +90,9 @@ function OIDCCallbackContent() {
           // If we're here with code/state, we need to call the backend to exchange it
           try {
             const apiUrl =
-              process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+              process.env.NEXT_PUBLIC_API_URL || "/api";
             const response = await fetch(
-              `${apiUrl}/api/v1/auth/oidc/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
+              `${apiUrl}/v1/auth/oidc/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
               {
                 credentials: "include", // Include cookies for state validation
               },

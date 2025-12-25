@@ -16,6 +16,7 @@ import (
 	domainservice "github.com/bravo68web/stasis/internal/domain/service"
 	"github.com/bravo68web/stasis/internal/transport/http/middleware"
 	apperrors "github.com/bravo68web/stasis/pkg/errors"
+	"github.com/bravo68web/stasis/pkg/logger"
 )
 
 const (
@@ -30,6 +31,7 @@ type AuthHandler struct {
 	userService *service.UserService
 	oidcService *service.OIDCService
 	config      *config.Config
+	log         *logger.Logger
 }
 
 // NewAuthHandler creates a new AuthHandler instance
@@ -44,13 +46,19 @@ func NewAuthHandler(
 		userService: userService,
 		oidcService: oidcService,
 		config:      cfg,
+		log:         logger.Get().WithFields(logger.Component("auth-handler")),
 	}
 }
 
 // OIDCLogin handles GET /api/v1/auth/oidc/login
 // Initiates the OIDC authentication flow by redirecting to the identity provider
 func (h *AuthHandler) OIDCLogin(c *gin.Context) {
+	h.log.Debug("OIDC login initiated",
+		logger.ClientIP(c.ClientIP()),
+	)
+
 	if h.oidcService == nil || !h.oidcService.IsEnabled() {
+		h.log.Warn("OIDC login attempted but OIDC is not enabled")
 		c.JSON(http.StatusNotImplemented, gin.H{
 			"error":   "not_implemented",
 			"message": "OIDC authentication is not enabled",
@@ -59,6 +67,7 @@ func (h *AuthHandler) OIDCLogin(c *gin.Context) {
 	}
 
 	if !h.oidcService.IsInitialized() {
+		h.log.Warn("OIDC login attempted but OIDC service is not initialized")
 		c.JSON(http.StatusServiceUnavailable, gin.H{
 			"error":   "service_unavailable",
 			"message": "OIDC service is not initialized",
@@ -69,6 +78,9 @@ func (h *AuthHandler) OIDCLogin(c *gin.Context) {
 	// Generate authorization URL with state
 	authURL, state, err := h.oidcService.GenerateAuthURL()
 	if err != nil {
+		h.log.Error("Failed to generate OIDC authorization URL",
+			logger.Error(err),
+		)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "internal_error",
 			"message": "Failed to generate authorization URL",
@@ -87,6 +99,10 @@ func (h *AuthHandler) OIDCLogin(c *gin.Context) {
 		true,  // httpOnly
 	)
 
+	h.log.Info("Redirecting user to OIDC provider",
+		logger.ClientIP(c.ClientIP()),
+	)
+
 	// Redirect to the identity provider
 	c.Redirect(http.StatusTemporaryRedirect, authURL)
 }
@@ -94,7 +110,12 @@ func (h *AuthHandler) OIDCLogin(c *gin.Context) {
 // OIDCCallback handles GET /api/v1/auth/oidc/callback
 // Processes the callback from the identity provider after user authentication
 func (h *AuthHandler) OIDCCallback(c *gin.Context) {
+	h.log.Debug("OIDC callback received",
+		logger.ClientIP(c.ClientIP()),
+	)
+
 	if h.oidcService == nil || !h.oidcService.IsEnabled() {
+		h.log.Warn("OIDC callback received but OIDC is not enabled")
 		c.JSON(http.StatusNotImplemented, gin.H{
 			"error":   "not_implemented",
 			"message": "OIDC authentication is not enabled",
@@ -105,6 +126,10 @@ func (h *AuthHandler) OIDCCallback(c *gin.Context) {
 	// Check for errors from the identity provider
 	if errParam := c.Query("error"); errParam != "" {
 		errDesc := c.Query("error_description")
+		h.log.Warn("OIDC provider returned error",
+			logger.String("error", errParam),
+			logger.String("description", errDesc),
+		)
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":       errParam,
 			"message":     "Authentication failed at identity provider",
@@ -116,6 +141,7 @@ func (h *AuthHandler) OIDCCallback(c *gin.Context) {
 	// Get the authorization code
 	code := c.Query("code")
 	if code == "" {
+		h.log.Warn("OIDC callback missing authorization code")
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   "bad_request",
 			"message": "Missing authorization code",
@@ -127,6 +153,9 @@ func (h *AuthHandler) OIDCCallback(c *gin.Context) {
 	state := c.Query("state")
 	expectedState, err := c.Cookie(oidcStateCookie)
 	if err != nil {
+		h.log.Warn("OIDC callback missing or expired state cookie",
+			logger.Error(err),
+		)
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   "bad_request",
 			"message": "Missing or expired state cookie",
@@ -137,12 +166,23 @@ func (h *AuthHandler) OIDCCallback(c *gin.Context) {
 	// Clear the state cookie
 	c.SetCookie(oidcStateCookie, "", -1, "/", "", false, true)
 
+	h.log.Debug("Processing OIDC callback")
+
 	// Handle the callback - this exchanges the code for tokens and creates/updates the user
 	user, sessionToken, err := h.oidcService.HandleCallback(c.Request.Context(), code, state, expectedState)
 	if err != nil {
+		h.log.Error("OIDC callback handling failed",
+			logger.Error(err),
+		)
 		h.handleError(c, err)
 		return
 	}
+
+	h.log.Info("OIDC authentication successful",
+		logger.String("user_id", user.ID.String()),
+		logger.String("username", user.Username),
+		logger.String("email", user.Email),
+	)
 
 	// Check if we have a frontend URL to redirect to
 	frontendURL := h.config.OIDC.FrontendURL
@@ -158,6 +198,9 @@ func (h *AuthHandler) OIDCCallback(c *gin.Context) {
 		// Encode user info as base64 JSON
 		userJSON, err := json.Marshal(userInfo)
 		if err != nil {
+			h.log.Error("Failed to marshal user info for redirect",
+				logger.Error(err),
+			)
 			h.handleError(c, err)
 			return
 		}
@@ -167,6 +210,11 @@ func (h *AuthHandler) OIDCCallback(c *gin.Context) {
 		// Using fragment (#) so the token doesn't appear in server logs
 		redirectURL := fmt.Sprintf("%s/auth/callback#token=%s&user=%s",
 			frontendURL, sessionToken, userBase64)
+
+		h.log.Debug("Redirecting user to frontend",
+			logger.String("frontend_url", frontendURL),
+			logger.String("user_id", user.ID.String()),
+		)
 
 		c.Redirect(http.StatusTemporaryRedirect, redirectURL)
 		return
@@ -188,6 +236,10 @@ func (h *AuthHandler) OIDCCallback(c *gin.Context) {
 // OIDCLogout handles POST /api/v1/auth/oidc/logout
 // Logs the user out by invalidating the session
 func (h *AuthHandler) OIDCLogout(c *gin.Context) {
+	h.log.Debug("OIDC logout initiated",
+		logger.ClientIP(c.ClientIP()),
+	)
+
 	// Get the post-logout redirect URI from query parameter
 	postLogoutRedirectURI := c.Query("redirect_uri")
 
@@ -197,12 +249,16 @@ func (h *AuthHandler) OIDCLogout(c *gin.Context) {
 		var err error
 		logoutURL, err = h.oidcService.GetLogoutURL("", postLogoutRedirectURI)
 		if err != nil {
+			h.log.Warn("Failed to get OIDC logout URL",
+				logger.Error(err),
+			)
 			// Log error but continue - logout from our side should still work
 		}
 	}
 
 	// If we have a provider logout URL, redirect to it
 	if logoutURL != "" {
+		h.log.Info("User logged out with provider logout URL")
 		c.JSON(http.StatusOK, gin.H{
 			"message":    "Logged out successfully",
 			"logout_url": logoutURL,
@@ -210,6 +266,7 @@ func (h *AuthHandler) OIDCLogout(c *gin.Context) {
 		return
 	}
 
+	h.log.Info("User logged out successfully")
 	// Otherwise just confirm logout
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Logged out successfully",
@@ -221,12 +278,18 @@ func (h *AuthHandler) OIDCLogout(c *gin.Context) {
 func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 	user := middleware.GetUserFromContext(c)
 	if user == nil {
+		h.log.Debug("GetCurrentUser called without authentication")
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error":   "unauthorized",
 			"message": "Authentication required",
 		})
 		return
 	}
+
+	h.log.Debug("Returning current user info",
+		logger.String("user_id", user.ID.String()),
+		logger.String("username", user.Username),
+	)
 
 	c.JSON(http.StatusOK, dto.UserInfo{
 		ID:       user.ID,
@@ -241,6 +304,11 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 func (h *AuthHandler) GetOIDCConfig(c *gin.Context) {
 	enabled := h.oidcService != nil && h.oidcService.IsEnabled()
 	initialized := enabled && h.oidcService.IsInitialized()
+
+	h.log.Debug("Returning OIDC config",
+		logger.Bool("enabled", enabled),
+		logger.Bool("initialized", initialized),
+	)
 
 	c.JSON(http.StatusOK, gin.H{
 		"oidc_enabled":     enabled,

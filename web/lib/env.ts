@@ -10,16 +10,17 @@ export const env = createEnv({
     NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
-    STASIS_SERVER_HOSTED_URL: z.url().default("http://localhost:8080"),
+    STASIS_SERVER_HOSTED_URL: z.url().default("http://localhost"),
     STASIS_SSH_HOST_NAME: z.string().default("localhost:2222"),
   },
+  
 
   /**
    * Client-side environment variables schema.
    * These are exposed to the client and must be prefixed with `NEXT_PUBLIC_`.
    */
   client: {
-    NEXT_PUBLIC_API_URL: z.url().default("http://localhost:8080"),
+    NEXT_PUBLIC_API_URL: z.string().default("http://localhost/api"),
   },
 
   /**

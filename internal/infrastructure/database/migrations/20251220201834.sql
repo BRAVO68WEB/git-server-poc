@@ -18,15 +18,15 @@ CREATE TABLE "users" (
   "id" uuid NOT NULL DEFAULT gen_random_uuid(),
   "username" character varying(255) NOT NULL,
   "email" character varying(255) NOT NULL,
-  "o_id_c_subject" character varying(255) NULL,
-  "o_id_c_issuer" character varying(255) NULL,
+  "oidc_subject" character varying(255) NULL,
+  "oidc_issuer" character varying(255) NULL,
   "is_admin" boolean NULL DEFAULT false,
   "created_at" timestamptz NULL,
   "updated_at" timestamptz NULL,
   PRIMARY KEY ("id")
 );
 -- Create index "idx_oidc_subject_issuer" to table: "users"
-CREATE UNIQUE INDEX "idx_oidc_subject_issuer" ON "users" ("o_id_c_subject", "o_id_c_issuer");
+CREATE UNIQUE INDEX "idx_oidc_subject_issuer" ON "users" ("oidc_subject", "oidc_issuer");
 -- Create index "idx_users_email" to table: "users"
 CREATE UNIQUE INDEX "idx_users_email" ON "users" ("email");
 -- Create index "idx_users_username" to table: "users"

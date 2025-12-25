@@ -3,7 +3,7 @@ package router
 import (
 	"github.com/bravo68web/stasis/internal/injectable"
 	"github.com/bravo68web/stasis/internal/server"
-	"github.com/gin-contrib/cors"
+	"github.com/bravo68web/stasis/internal/transport/http/middleware"
 )
 
 type Router struct {
@@ -34,32 +34,11 @@ func (r *Router) RegisterRoutes() {
 		allowedOrigins = append(allowedOrigins, r.server.Config.OIDC.FrontendURL)
 	}
 
-	// Apply CORS middleware with cookie support
-	r.server.Use(cors.New(cors.Config{
-		AllowOrigins: allowedOrigins,
-		AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"},
-		AllowHeaders: []string{
-			"Origin",
-			"Content-Length",
-			"Content-Type",
-			"Authorization",
-			"Accept",
-			"Accept-Encoding",
-			"Accept-Language",
-			"Cache-Control",
-			"Cookie",
-			"X-Requested-With",
-			"X-Auth-Token",
-		},
-		ExposeHeaders: []string{
-			"Content-Length",
-			"Content-Type",
-			"Set-Cookie",
-			"Authorization",
-		},
-		AllowCredentials: true,
-		MaxAge:           12 * 60 * 60, // 12 hours preflight cache
-	}))
+	// Setup logging and recovery middleware
+	r.setupHTTPLoggerAndRecovery()
+
+	// Apply CORS middleware
+	r.server.Use(middleware.CORSMiddleware(allowedOrigins))
 
 	r.docsRouter()
 
@@ -69,4 +48,29 @@ func (r *Router) RegisterRoutes() {
 	r.gitRouter()
 	r.sshKeyRouter()
 	r.tokenRouter()
+}
+
+func (r *Router) setupHTTPLoggerAndRecovery() {
+	// Add custom logging middleware
+	loggerMiddlewareCfg := &middleware.LoggerConfig{
+		Logger:           r.server.Logger,
+		SkipPaths:        []string{"/health", "/healthz", "/ready", "/readyz", "/metrics"},
+		SkipPathPrefixes: []string{"/static/"},
+		LogRequestBody:   r.server.Config.Logging.Development,
+		LogResponseBody:  false,
+		MaxBodyLogSize:   1024,
+		TraceIDHeader:    "X-Trace-ID",
+		RequestIDHeader:  "X-Request-ID",
+		IncludeHeaders:   r.server.Config.Logging.Development,
+		SensitiveHeaders: []string{"Authorization", "Cookie", "X-API-Key", "X-Auth-Token"},
+	}
+	r.server.Use(middleware.LoggerMiddlewareWithConfig(loggerMiddlewareCfg))
+
+	// Add recovery middleware with logging
+	recoveryCfg := &middleware.RecoveryConfig{
+		Logger:           r.server.Logger,
+		EnableStackTrace: r.server.Config.Logging.Development || r.server.Config.Server.Mode != "release",
+		StackTraceSize:   4096,
+	}
+	r.server.Use(middleware.RecoveryMiddlewareWithConfig(recoveryCfg))
 }

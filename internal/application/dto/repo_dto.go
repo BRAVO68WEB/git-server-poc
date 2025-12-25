@@ -18,23 +18,25 @@ type CreateRepoRequest struct {
 
 // UpdateRepoRequest represents a request to update a repository
 type UpdateRepoRequest struct {
-	Description *string `json:"description,omitempty"`
-	IsPrivate   *bool   `json:"is_private,omitempty"`
+	Description   *string `json:"description,omitempty"`
+	IsPrivate     *bool   `json:"is_private,omitempty"`
+	DefaultBranch *string `json:"default_branch,omitempty"`
 }
 
 // RepoResponse represents the response for repository data
 type RepoResponse struct {
-	ID          uuid.UUID `json:"id"`
-	Name        string    `json:"name"`
-	Owner       string    `json:"owner"`
-	OwnerID     uuid.UUID `json:"owner_id"`
-	IsPrivate   bool      `json:"is_private"`
-	Description string    `json:"description"`
-	CloneURL    string    `json:"clone_url"`
-	SSHURL      string    `json:"ssh_url"`
-	GitPath     string    `json:"git_path,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID            uuid.UUID `json:"id"`
+	Name          string    `json:"name"`
+	Owner         string    `json:"owner"`
+	OwnerID       uuid.UUID `json:"owner_id"`
+	IsPrivate     bool      `json:"is_private"`
+	Description   string    `json:"description"`
+	DefaultBranch string    `json:"default_branch"`
+	CloneURL      string    `json:"clone_url"`
+	SSHURL        string    `json:"ssh_url"`
+	GitPath       string    `json:"git_path,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // RepoListResponse represents a paginated list of repositories
@@ -303,14 +305,15 @@ func FileContentFromService(f *service.FileContent, ref string) FileContentRespo
 // RepoFromModel converts a Repository model to RepoResponse DTO
 func RepoFromModel(repo *models.Repository, baseURL, sshHost string, sshPort int) RepoResponse {
 	response := RepoResponse{
-		ID:          repo.ID,
-		Name:        repo.Name,
-		OwnerID:     repo.OwnerID,
-		IsPrivate:   repo.IsPrivate,
-		Description: repo.Description,
-		GitPath:     repo.GitPath,
-		CreatedAt:   repo.CreatedAt,
-		UpdatedAt:   repo.UpdatedAt,
+		ID:            repo.ID,
+		Name:          repo.Name,
+		OwnerID:       repo.OwnerID,
+		IsPrivate:     repo.IsPrivate,
+		Description:   repo.Description,
+		DefaultBranch: repo.DefaultBranch,
+		GitPath:       repo.GitPath,
+		CreatedAt:     repo.CreatedAt,
+		UpdatedAt:     repo.UpdatedAt,
 	}
 
 	// Set owner username if available

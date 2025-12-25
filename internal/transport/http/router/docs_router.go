@@ -15,7 +15,7 @@ func (r *Router) docsRouter() {
 
 	// Configure Scalar with the OpenAPI spec
 	cfg := openapiui.Config{
-		Title:   "Git server API Documentation",
+		Title:   "Stasis API Documentation",
 		Theme:   "deepSpace",
 		SpecURL: "/docs/openapi.json",
 		SpecProvider: func() ([]byte, error) {
