@@ -99,11 +99,13 @@ func New() *Server {
 		logger.String("database", cfg.Database.DBName),
 	)
 
-	// Run auto-migrations on startup
-	migrator := database.NewMigrator(db)
-	migrator.MustApplyMigrations(context.Background())
+	// Run auto-migrations in production mode
+	if cfg.IsProduction() {
+		migrator := database.NewMigrator(db)
+		migrator.MustApplyMigrations(context.Background())
 
-	log.Info("Database migrations applied")
+		log.Info("Database migrations applied")
+	}
 
 	// Set Gin mode based on configuration
 	switch cfg.Server.Mode {
