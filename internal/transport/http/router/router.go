@@ -48,6 +48,7 @@ func (r *Router) RegisterRoutes() {
 	r.gitRouter()
 	r.sshKeyRouter()
 	r.tokenRouter()
+	r.ciRouter()
 }
 
 func (r *Router) setupHTTPLoggerAndRecovery() {

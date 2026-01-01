@@ -23,6 +23,7 @@ type Dependencies struct {
 	SSHKeyService *service.SSHKeyService
 	TokenService  *service.TokenService
 	OIDCService   *service.OIDCService
+	CIService     *service.CIService
 	Storage       domainservice.StorageService
 }
 
@@ -37,8 +38,15 @@ func LoadDependencies(cfg *config.Config, db *database.Database) Dependencies {
 	repoRepo := repository.NewRepoRepository(db.DB())
 	sshKeyRepo := repository.NewSSHKeyRepository(db.DB())
 	tokenRepo := repository.NewTokenRepository(db.DB())
+
+	// Initialize CI repositories
+	ciJobRepo := repository.NewCIJobRepository(db.DB())
+	ciStepRepo := repository.NewCIJobStepRepository(db.DB())
+	ciLogRepo := repository.NewCIJobLogRepository(db.DB())
+	ciArtifactRepo := repository.NewCIArtifactRepository(db.DB())
+
 	log.Debug("Repositories initialized",
-		logger.Int("count", 4),
+		logger.Int("count", 8),
 	)
 
 	// Initialize storage
@@ -93,6 +101,26 @@ func LoadDependencies(cfg *config.Config, db *database.Database) Dependencies {
 	sshKeyService := service.NewSSHKeyService(sshKeyRepo, userRepo)
 	tokenService := service.NewTokenService(tokenRepo, userRepo)
 
+	// Initialize CI service
+	log.Debug("Initializing CI service...",
+		logger.Bool("enabled", cfg.CI.Enabled),
+	)
+	ciService := service.NewCIService(
+		&cfg.CI,
+		ciJobRepo,
+		ciStepRepo,
+		ciLogRepo,
+		ciArtifactRepo,
+		repoRepo,
+	)
+	if cfg.CI.Enabled {
+		log.Info("CI service initialized successfully",
+			logger.String("server_url", cfg.CI.ServerURL),
+		)
+	} else {
+		log.Info("CI service is disabled")
+	}
+
 	log.Info("All application services initialized successfully",
 		logger.Bool("auth_service", true),
 		logger.Bool("git_service", true),
@@ -101,6 +129,7 @@ func LoadDependencies(cfg *config.Config, db *database.Database) Dependencies {
 		logger.Bool("ssh_key_service", true),
 		logger.Bool("token_service", true),
 		logger.Bool("oidc_service", cfg.OIDC.Enabled),
+		logger.Bool("ci_service", cfg.CI.Enabled),
 	)
 
 	log.Info("Dependencies loaded successfully")
@@ -113,6 +142,7 @@ func LoadDependencies(cfg *config.Config, db *database.Database) Dependencies {
 		SSHKeyService: sshKeyService,
 		TokenService:  tokenService,
 		OIDCService:   oidcService,
+		CIService:     ciService,
 		Storage:       storageService,
 	}
 }

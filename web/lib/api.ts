@@ -746,3 +746,290 @@ export async function getBlame(
     blame: data.blame,
   };
 }
+
+// ============================================================================
+// CI/CD API
+// ============================================================================
+
+import {
+  CIJob,
+  CIJobListResponse,
+  CIJobLogsResponse,
+  TriggerCIJobRequest,
+  TriggerCIJobResponse,
+  CIJobEvent,
+  CIJobLog,
+} from "./types";
+
+/**
+ * List CI jobs for a repository
+ */
+export async function listCIJobs(
+  owner: string,
+  repo: string,
+  limit: number = 20,
+  offset: number = 0,
+): Promise<CIJobListResponse> {
+  return apiRequest<CIJobListResponse>(
+    `/v1/repos/${owner}/${repo}/ci/jobs?limit=${limit}&offset=${offset}`,
+  );
+}
+
+/**
+ * Get a specific CI job
+ */
+export async function getCIJob(
+  owner: string,
+  repo: string,
+  jobId: string,
+): Promise<CIJob> {
+  return apiRequest<CIJob>(`/v1/repos/${owner}/${repo}/ci/jobs/${jobId}`);
+}
+
+/**
+ * Get the latest CI job for a repository
+ */
+export async function getLatestCIJob(
+  owner: string,
+  repo: string,
+): Promise<CIJob> {
+  return apiRequest<CIJob>(`/v1/repos/${owner}/${repo}/ci/latest`);
+}
+
+/**
+ * Get CI job logs
+ */
+export async function getCIJobLogs(
+  owner: string,
+  repo: string,
+  jobId: string,
+  limit: number = 1000,
+  offset: number = 0,
+): Promise<CIJobLogsResponse> {
+  return apiRequest<CIJobLogsResponse>(
+    `/v1/repos/${owner}/${repo}/ci/jobs/${jobId}/logs?limit=${limit}&offset=${offset}`,
+  );
+}
+
+/**
+ * Trigger a new CI job
+ */
+export async function triggerCIJob(
+  owner: string,
+  repo: string,
+  request: TriggerCIJobRequest,
+): Promise<TriggerCIJobResponse> {
+  return apiRequest<TriggerCIJobResponse>(
+    `/v1/repos/${owner}/${repo}/ci/jobs`,
+    {
+      method: "POST",
+      body: JSON.stringify(request),
+    },
+  );
+}
+
+/**
+ * Cancel a running CI job
+ */
+export async function cancelCIJob(
+  owner: string,
+  repo: string,
+  jobId: string,
+): Promise<{ message: string; job_id: string }> {
+  return apiRequest<{ message: string; job_id: string }>(
+    `/v1/repos/${owner}/${repo}/ci/jobs/${jobId}/cancel`,
+    { method: "POST" },
+  );
+}
+
+/**
+ * Retry a failed CI job
+ */
+export async function retryCIJob(
+  owner: string,
+  repo: string,
+  jobId: string,
+): Promise<{
+  message: string;
+  new_job_id: string;
+  new_run_id: string;
+  original_job_id: string;
+}> {
+  return apiRequest<{
+    message: string;
+    new_job_id: string;
+    new_run_id: string;
+    original_job_id: string;
+  }>(`/v1/repos/${owner}/${repo}/ci/jobs/${jobId}/retry`, { method: "POST" });
+}
+
+/**
+ * List artifacts for a CI job
+ */
+export async function listCIJobArtifacts(
+  owner: string,
+  repo: string,
+  jobId: string,
+): Promise<{ artifacts: CIArtifact[]; total: number }> {
+  return apiRequest<{ artifacts: CIArtifact[]; total: number }>(
+    `/v1/repos/${owner}/${repo}/ci/jobs/${jobId}/artifacts`,
+  );
+}
+
+/**
+ * Get artifact download URL
+ */
+export function getArtifactDownloadUrl(
+  owner: string,
+  repo: string,
+  jobId: string,
+  artifactName: string,
+): string {
+  return `${getApiUrl()}/v1/repos/${owner}/${repo}/ci/jobs/${jobId}/artifacts/${encodeURIComponent(artifactName)}`;
+}
+
+/**
+ * Subscribe to CI job log stream via Server-Sent Events
+ * Returns an EventSource that emits job events in real-time
+ */
+export function subscribeToCIJobStream(
+  owner: string,
+  repo: string,
+  jobId: string,
+  onEvent: (event: CIJobEvent) => void,
+  onError?: (error: Event) => void,
+): EventSource {
+  const url = `${getApiUrl()}/v1/repos/${owner}/${repo}/ci/jobs/${jobId}/stream`;
+  const eventSource = new EventSource(url, { withCredentials: true });
+
+  // Handle connection established
+  eventSource.addEventListener("connected", (e: MessageEvent) => {
+    try {
+      const data = JSON.parse(e.data);
+      onEvent({ type: "connected", job_id: jobId, data });
+    } catch (err) {
+      console.error("Failed to parse connected event:", err);
+    }
+  });
+
+  // Handle status updates
+  eventSource.addEventListener("status", (e: MessageEvent) => {
+    try {
+      const data = JSON.parse(e.data);
+      onEvent({ type: "status", job_id: jobId, data });
+    } catch (err) {
+      console.error("Failed to parse status event:", err);
+    }
+  });
+
+  // Handle log entries
+  eventSource.addEventListener("log", (e: MessageEvent) => {
+    try {
+      const data: CIJobLog = JSON.parse(e.data);
+      onEvent({ type: "log", job_id: jobId, data });
+    } catch (err) {
+      console.error("Failed to parse log event:", err);
+    }
+  });
+
+  // Handle step updates
+  eventSource.addEventListener("step", (e: MessageEvent) => {
+    try {
+      const data = JSON.parse(e.data);
+      onEvent({ type: "step", job_id: jobId, data });
+    } catch (err) {
+      console.error("Failed to parse step event:", err);
+    }
+  });
+
+  // Handle artifact updates
+  eventSource.addEventListener("artifact", (e: MessageEvent) => {
+    try {
+      const data = JSON.parse(e.data);
+      onEvent({ type: "artifact", job_id: jobId, data });
+    } catch (err) {
+      console.error("Failed to parse artifact event:", err);
+    }
+  });
+
+  // Handle errors
+  eventSource.onerror = (e) => {
+    if (onError) {
+      onError(e);
+    }
+  };
+
+  return eventSource;
+}
+
+/**
+ * Get status badge color for CI job status
+ */
+export function getCIStatusColor(status: string): string {
+  switch (status) {
+    case "success":
+      return "text-green-500";
+    case "failed":
+    case "error":
+      return "text-red-500";
+    case "running":
+      return "text-blue-500";
+    case "pending":
+    case "queued":
+      return "text-yellow-500";
+    case "cancelled":
+      return "text-gray-500";
+    case "timed_out":
+      return "text-orange-500";
+    default:
+      return "text-muted";
+  }
+}
+
+/**
+ * Get status badge background color for CI job status
+ */
+export function getCIStatusBgColor(status: string): string {
+  switch (status) {
+    case "success":
+      return "bg-green-500/10 border-green-500/30";
+    case "failed":
+    case "error":
+      return "bg-red-500/10 border-red-500/30";
+    case "running":
+      return "bg-blue-500/10 border-blue-500/30";
+    case "pending":
+    case "queued":
+      return "bg-yellow-500/10 border-yellow-500/30";
+    case "cancelled":
+      return "bg-gray-500/10 border-gray-500/30";
+    case "timed_out":
+      return "bg-orange-500/10 border-orange-500/30";
+    default:
+      return "bg-base border-base";
+  }
+}
+
+/**
+ * Format duration in seconds to human-readable string
+ */
+export function formatCIDuration(seconds: number | undefined): string {
+  if (seconds === undefined || seconds === null) {
+    return "-";
+  }
+
+  if (seconds < 60) {
+    return `${Math.round(seconds)}s`;
+  }
+
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.round(seconds % 60);
+
+  if (minutes < 60) {
+    return `${minutes}m ${remainingSeconds}s`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return `${hours}h ${remainingMinutes}m`;
+}

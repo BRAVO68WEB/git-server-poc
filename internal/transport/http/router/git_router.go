@@ -9,12 +9,13 @@ func (r *Router) gitRouter() {
 	// Initialize auth middleware
 	authMiddleware := middleware.NewAuthMiddleware(r.Deps.AuthService)
 
-	// Initialize git handler
+	// Initialize git handler with CI service for triggering CI on push
 	h := handler.NewGitHandler(
 		r.Deps.GitService,
 		r.Deps.RepoService,
 		r.Deps.AuthService,
 		r.Deps.Storage,
+		r.Deps.CIService,
 	)
 
 	// Git Smart HTTP Protocol routes

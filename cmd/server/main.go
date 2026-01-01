@@ -70,6 +70,8 @@ func main() {
 			&s.Config.Storage,
 			deps.AuthService,
 			deps.RepoService,
+			deps.CIService,
+			deps.GitService,
 			deps.Storage,
 		)
 		if err != nil {
