@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { env } from "./env";
 import { UserInfo } from "./types";
 
 // Cookie names (must match api.ts and middleware.ts)
@@ -66,12 +67,11 @@ export async function serverApiRequest<T>(
   // replace localhost with nginx service name
   if (
     typeof window === "undefined" &&
+    env.DOCKER_ENV === "true" &&
     API_URL.includes("localhost")
   ) {
     API_URL = API_URL.replace("localhost", "nginx");
   }
-
-  console.log("Final API_URL", process.env.DOCKER_ENV);
 
   const authHeaders = await getServerAuthHeaders();
 

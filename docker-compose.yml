@@ -83,6 +83,7 @@ services:
       - NEXT_PUBLIC_API_URL=http://localhost/api
       - STASIS_SERVER_HOSTED_URL=http://localhost
       - STASIS_SSH_HOST_NAME=localhost:2222
+      - DOCKER_ENV=true
     depends_on:
       - api
     restart: unless-stopped

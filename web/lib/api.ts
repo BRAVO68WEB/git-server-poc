@@ -45,12 +45,11 @@ function getApiUrl(): string {
   // replace localhost with nginx service name
   if (
     typeof window === "undefined" &&
+    env.DOCKER_ENV === "true" &&
     baseUrl.includes("localhost")
   ) {
     return baseUrl.replace("localhost", "nginx");
   }
-
-  console.log("baseUrl", process.env.DOCKER_ENV);
 
   return baseUrl;
 }
