@@ -39,14 +39,8 @@ func LoadDependencies(cfg *config.Config, db *database.Database) Dependencies {
 	sshKeyRepo := repository.NewSSHKeyRepository(db.DB())
 	tokenRepo := repository.NewTokenRepository(db.DB())
 
-	// Initialize CI repositories
-	ciJobRepo := repository.NewCIJobRepository(db.DB())
-	ciStepRepo := repository.NewCIJobStepRepository(db.DB())
-	ciLogRepo := repository.NewCIJobLogRepository(db.DB())
-	ciArtifactRepo := repository.NewCIArtifactRepository(db.DB())
-
 	log.Debug("Repositories initialized",
-		logger.Int("count", 8),
+		logger.Int("count", 4),
 	)
 
 	// Initialize storage
@@ -102,19 +96,16 @@ func LoadDependencies(cfg *config.Config, db *database.Database) Dependencies {
 	tokenService := service.NewTokenService(tokenRepo, userRepo)
 
 	// Initialize CI service
+	// CI data (jobs, logs, artifacts) is fetched directly from CI server - no local database storage
 	log.Debug("Initializing CI service...",
 		logger.Bool("enabled", cfg.CI.Enabled),
 	)
 	ciService := service.NewCIService(
 		&cfg.CI,
-		ciJobRepo,
-		ciStepRepo,
-		ciLogRepo,
-		ciArtifactRepo,
 		repoRepo,
 	)
 	if cfg.CI.Enabled {
-		log.Info("CI service initialized successfully",
+		log.Info("CI service initialized successfully (fetching from CI server)",
 			logger.String("server_url", cfg.CI.ServerURL),
 		)
 	} else {

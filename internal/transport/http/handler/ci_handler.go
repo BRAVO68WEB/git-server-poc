@@ -3,7 +3,6 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -79,7 +78,7 @@ func (h *CIHandler) TriggerJob(c *gin.Context) {
 	}
 
 	// Build clone URL
-	cloneURL := fmt.Sprintf("%s/%s/%s.git", c.Request.Host, owner, repoName)
+	cloneURL := h.ciService.BuildCloneURL(owner, repoName)
 
 	// Trigger the job
 	job, err := h.ciService.TriggerJob(c.Request.Context(), &service.TriggerJobRequest{
@@ -132,7 +131,7 @@ func (h *CIHandler) ListJobs(c *gin.Context) {
 		limit = 100
 	}
 
-	// Get jobs
+	// Get jobs from CI server
 	jobs, total, err := h.ciService.ListJobsByRepository(c.Request.Context(), repo.ID, limit, offset)
 	if err != nil {
 		h.log.Error("Failed to list CI jobs",
@@ -173,35 +172,23 @@ func (h *CIHandler) GetJob(c *gin.Context) {
 		return
 	}
 
-	// Get repository
-	repo, err := h.repoRepo.FindByOwnerUsernameAndName(c.Request.Context(), owner, repoName)
+	// Get repository (for validation)
+	_, err = h.repoRepo.FindByOwnerUsernameAndName(c.Request.Context(), owner, repoName)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "repository not found"})
 		return
 	}
 
-	// Get job
+	// Get job from CI server
 	job, err := h.ciService.GetJob(c.Request.Context(), jobID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "job not found"})
 		return
 	}
 
-	// Verify job belongs to this repository
-	if job.RepositoryID != repo.ID {
-		c.JSON(http.StatusNotFound, gin.H{"error": "job not found"})
-		return
-	}
-
-	// Get steps
-	steps, _ := h.ciService.GetJobSteps(c.Request.Context(), jobID)
-
-	// Get artifacts
-	artifacts, _ := h.ciService.GetJobArtifacts(c.Request.Context(), jobID)
-
 	response := h.formatJobResponse(job)
-	response["steps"] = h.formatStepsResponse(steps)
-	response["artifacts"] = h.formatArtifactsResponse(artifacts)
+	response["steps"] = h.formatStepsResponse(job.Steps)
+	response["artifacts"] = h.formatArtifactsResponse(job.Artifacts)
 
 	c.JSON(http.StatusOK, response)
 }
@@ -219,17 +206,10 @@ func (h *CIHandler) GetJobLogs(c *gin.Context) {
 		return
 	}
 
-	// Get repository
-	repo, err := h.repoRepo.FindByOwnerUsernameAndName(c.Request.Context(), owner, repoName)
+	// Get repository (for validation)
+	_, err = h.repoRepo.FindByOwnerUsernameAndName(c.Request.Context(), owner, repoName)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "repository not found"})
-		return
-	}
-
-	// Verify job belongs to this repository
-	job, err := h.ciService.GetJob(c.Request.Context(), jobID)
-	if err != nil || job.RepositoryID != repo.ID {
-		c.JSON(http.StatusNotFound, gin.H{"error": "job not found"})
 		return
 	}
 
@@ -240,7 +220,7 @@ func (h *CIHandler) GetJobLogs(c *gin.Context) {
 		limit = 10000
 	}
 
-	// Get logs
+	// Get logs from CI server
 	logs, total, err := h.ciService.GetJobLogs(c.Request.Context(), jobID, limit, offset)
 	if err != nil {
 		h.log.Error("Failed to get job logs",
@@ -274,41 +254,7 @@ func (h *CIHandler) GetJobLogs(c *gin.Context) {
 	})
 }
 
-// ReceiveLogs receives logs from the CI runner
-// POST /api/v1/ci/jobs/:job_id/logs
-func (h *CIHandler) ReceiveLogs(c *gin.Context) {
-	jobIDStr := c.Param("job_id")
-
-	jobID, err := uuid.Parse(jobIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid job ID"})
-		return
-	}
-
-	// Parse log entries
-	var entries []service.LogEntry
-	if err := c.ShouldBindJSON(&entries); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Store logs
-	if err := h.ciService.ReceiveLogs(c.Request.Context(), jobID, entries); err != nil {
-		h.log.Error("Failed to receive logs",
-			logger.Error(err),
-			logger.String("job_id", jobIDStr),
-		)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to store logs"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Logs received",
-		"count":   len(entries),
-	})
-}
-
-// StreamLogs streams job logs via Server-Sent Events
+// StreamLogs streams logs for a CI job via SSE
 // GET /api/v1/repos/:owner/:repo/ci/jobs/:job_id/stream
 func (h *CIHandler) StreamLogs(c *gin.Context) {
 	owner := c.Param("owner")
@@ -321,17 +267,10 @@ func (h *CIHandler) StreamLogs(c *gin.Context) {
 		return
 	}
 
-	// Get repository
-	repo, err := h.repoRepo.FindByOwnerUsernameAndName(c.Request.Context(), owner, repoName)
+	// Get repository (for validation)
+	_, err = h.repoRepo.FindByOwnerUsernameAndName(c.Request.Context(), owner, repoName)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "repository not found"})
-		return
-	}
-
-	// Verify job belongs to this repository
-	job, err := h.ciService.GetJob(c.Request.Context(), jobID)
-	if err != nil || job.RepositoryID != repo.ID {
-		c.JSON(http.StatusNotFound, gin.H{"error": "job not found"})
 		return
 	}
 
@@ -345,44 +284,25 @@ func (h *CIHandler) StreamLogs(c *gin.Context) {
 	eventCh := h.ciService.Subscribe(jobID)
 	defer h.ciService.Unsubscribe(jobID, eventCh)
 
-	// Send initial connection message
-	h.sendSSE(c.Writer, "connected", gin.H{
-		"job_id":  jobID,
-		"status":  job.Status,
-		"message": "Connected to job stream",
-	})
+	ctx := c.Request.Context()
+	w := c.Writer
 
-	// Send existing logs
-	logs, _, _ := h.ciService.GetJobLogs(c.Request.Context(), jobID, 1000, 0)
-	for _, log := range logs {
-		h.sendSSE(c.Writer, "log", gin.H{
-			"timestamp": log.Timestamp,
-			"level":     log.Level,
-			"step_name": log.StepName,
-			"message":   log.Message,
-			"sequence":  log.Sequence,
-		})
+	// Send initial job status
+	job, err := h.ciService.GetJob(ctx, jobID)
+	if err == nil {
+		h.sendSSE(w, "status", h.formatJobResponse(job))
 	}
 
-	// Create ticker for heartbeat
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-
 	// Stream events
-	clientGone := c.Request.Context().Done()
 	for {
 		select {
-		case <-clientGone:
+		case <-ctx.Done():
 			return
 		case event, ok := <-eventCh:
 			if !ok {
 				return
 			}
-			h.sendSSE(c.Writer, event.Type, event.Data)
-		case <-ticker.C:
-			// Send heartbeat
-			fmt.Fprintf(c.Writer, ": heartbeat\n\n")
-			c.Writer.Flush()
+			h.sendSSE(w, event.Type, event)
 		}
 	}
 }
@@ -421,16 +341,9 @@ func (h *CIHandler) CancelJob(c *gin.Context) {
 		return
 	}
 
-	// Verify job belongs to this repository
-	job, err := h.ciService.GetJob(c.Request.Context(), jobID)
-	if err != nil || job.RepositoryID != repo.ID {
-		c.JSON(http.StatusNotFound, gin.H{"error": "job not found"})
-		return
-	}
-
 	// Cancel the job
 	if err := h.ciService.CancelJob(c.Request.Context(), jobID); err != nil {
-		h.log.Error("Failed to cancel job",
+		h.log.Error("Failed to cancel CI job",
 			logger.Error(err),
 			logger.String("job_id", jobIDStr),
 		)
@@ -439,7 +352,7 @@ func (h *CIHandler) CancelJob(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Job cancelled",
+		"message": "Job cancelled successfully",
 		"job_id":  jobID,
 	})
 }
@@ -478,17 +391,10 @@ func (h *CIHandler) RetryJob(c *gin.Context) {
 		return
 	}
 
-	// Verify job belongs to this repository
-	job, err := h.ciService.GetJob(c.Request.Context(), jobID)
-	if err != nil || job.RepositoryID != repo.ID {
-		c.JSON(http.StatusNotFound, gin.H{"error": "job not found"})
-		return
-	}
-
 	// Retry the job
 	newJob, err := h.ciService.RetryJob(c.Request.Context(), jobID, currentUser.Username)
 	if err != nil {
-		h.log.Error("Failed to retry job",
+		h.log.Error("Failed to retry CI job",
 			logger.Error(err),
 			logger.String("job_id", jobIDStr),
 		)
@@ -497,187 +403,11 @@ func (h *CIHandler) RetryJob(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusAccepted, gin.H{
-		"message":         "Job retry triggered",
-		"new_job_id":      newJob.ID,
-		"new_run_id":      newJob.RunID,
+		"message":         "Job retry initiated",
 		"original_job_id": jobID,
-	})
-}
-
-// CompleteJob receives job completion events from the CI runner
-// POST /api/v1/ci/jobs/:job_id/complete
-func (h *CIHandler) CompleteJob(c *gin.Context) {
-	jobIDStr := c.Param("job_id")
-
-	jobID, err := uuid.Parse(jobIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid job ID"})
-		return
-	}
-
-	// Read raw body
-	body, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read body"})
-		return
-	}
-
-	h.log.Info("Received job completion event",
-		logger.String("job_id", jobID.String()),
-	)
-
-	// RustDuration matches Rust's std::time::Duration JSON format
-	type RustDuration struct {
-		Secs  uint64 `json:"secs"`
-		Nanos uint32 `json:"nanos"`
-	}
-
-	// Parse the completion event
-	var completion struct {
-		JobID      uuid.UUID    `json:"job_id"`
-		RunID      uuid.UUID    `json:"run_id"`
-		Status     string       `json:"status"`
-		StartedAt  string       `json:"started_at,omitempty"`
-		FinishedAt string       `json:"finished_at,omitempty"`
-		Duration   RustDuration `json:"duration,omitempty"`
-		ExitCode   int          `json:"exit_code"`
-		Steps      []struct {
-			Name     string       `json:"name"`
-			Status   string       `json:"status"`
-			ExitCode int          `json:"exit_code"`
-			Duration RustDuration `json:"duration,omitempty"`
-		} `json:"steps,omitempty"`
-		Artifacts []struct {
-			Name     string  `json:"name"`
-			Size     int64   `json:"size"`
-			Checksum string  `json:"checksum"`
-			URL      *string `json:"url,omitempty"`
-		} `json:"artifacts,omitempty"`
-		Metadata map[string]string `json:"metadata,omitempty"`
-	}
-
-	if err := json.Unmarshal(body, &completion); err != nil {
-		h.log.Error("Failed to parse completion event",
-			logger.Error(err),
-			logger.String("job_id", jobID.String()),
-		)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
-		return
-	}
-
-	// Map status string to models.CIJobStatus
-	var status models.CIJobStatus
-	switch completion.Status {
-	case "Success", "success":
-		status = models.CIJobStatusSuccess
-	case "Failed", "failed":
-		status = models.CIJobStatusFailed
-	case "Cancelled", "cancelled":
-		status = models.CIJobStatusCancelled
-	case "TimedOut", "timed_out":
-		status = models.CIJobStatusTimedOut
-	default:
-		status = models.CIJobStatusError
-	}
-
-	// Parse timestamps
-	var startedAt, finishedAt *time.Time
-	if completion.StartedAt != "" {
-		if t, err := time.Parse(time.RFC3339, completion.StartedAt); err == nil {
-			startedAt = &t
-		}
-	}
-	if completion.FinishedAt != "" {
-		if t, err := time.Parse(time.RFC3339, completion.FinishedAt); err == nil {
-			finishedAt = &t
-		}
-	}
-
-	// Update job with completion details including timestamps
-	var errorMsg *string
-	if status == models.CIJobStatusFailed || status == models.CIJobStatusError {
-		msg := fmt.Sprintf("Job finished with status: %s, exit code: %d", completion.Status, completion.ExitCode)
-		errorMsg = &msg
-	}
-
-	if err := h.ciService.UpdateJobCompletion(c.Request.Context(), jobID, status, startedAt, finishedAt, errorMsg); err != nil {
-		h.log.Error("Failed to update job completion",
-			logger.Error(err),
-			logger.String("job_id", jobID.String()),
-		)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update job"})
-		return
-	}
-
-	// Save artifacts from completion event
-	if len(completion.Artifacts) > 0 {
-		for _, artifactData := range completion.Artifacts {
-			artifact := &models.CIArtifact{
-				JobID:    jobID,
-				Name:     artifactData.Name,
-				Path:     artifactData.Name, // Use name as path since CI runner doesn't always provide path
-				Size:     artifactData.Size,
-				Checksum: artifactData.Checksum,
-				URL:      artifactData.URL,
-			}
-			if err := h.ciService.SaveArtifact(c.Request.Context(), artifact); err != nil {
-				h.log.Warn("Failed to save artifact from completion",
-					logger.Error(err),
-					logger.String("job_id", jobID.String()),
-					logger.String("artifact", artifactData.Name),
-				)
-			} else {
-				h.log.Info("Artifact saved",
-					logger.String("job_id", jobID.String()),
-					logger.String("artifact", artifactData.Name),
-				)
-			}
-		}
-	}
-
-	h.log.Info("Job completion processed",
-		logger.String("job_id", jobID.String()),
-		logger.String("status", string(status)),
-		logger.Int("artifacts", len(completion.Artifacts)),
-	)
-
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Job completion received",
-		"job_id":  jobID,
-		"status":  status,
-	})
-}
-
-// WebhookJobUpdate receives job status updates from the CI runner
-// POST /api/v1/ci/webhook/job-update
-func (h *CIHandler) WebhookJobUpdate(c *gin.Context) {
-	// Read raw body
-	body, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read body"})
-		return
-	}
-
-	// Parse the update
-	var update service.CIRunnerJobResponse
-	if err := json.Unmarshal(body, &update); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
-		return
-	}
-
-	// Update job status
-	if err := h.ciService.UpdateJobFromRunner(c.Request.Context(), update.JobID, &update); err != nil {
-		h.log.Error("Failed to update job from webhook",
-			logger.Error(err),
-			logger.String("job_id", update.JobID.String()),
-		)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update job"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Job updated",
-		"job_id":  update.JobID,
+		"new_job_id":      newJob.ID,
+		"run_id":          newJob.RunID,
+		"status":          newJob.Status,
 	})
 }
 
@@ -694,7 +424,7 @@ func (h *CIHandler) GetLatestJob(c *gin.Context) {
 		return
 	}
 
-	// Get latest job
+	// Get latest job from CI server
 	job, err := h.ciService.GetLatestJobByRepository(c.Request.Context(), repo.ID)
 	if err != nil {
 		h.log.Error("Failed to get latest job",
@@ -714,71 +444,6 @@ func (h *CIHandler) GetLatestJob(c *gin.Context) {
 	c.JSON(http.StatusOK, h.formatJobResponse(job))
 }
 
-// Helper methods
-
-func (h *CIHandler) formatJobResponse(job *models.CIJob) gin.H {
-	response := gin.H{
-		"id":            job.ID,
-		"run_id":        job.RunID,
-		"repository_id": job.RepositoryID,
-		"commit_sha":    job.CommitSHA,
-		"ref_name":      job.RefName,
-		"ref_type":      job.RefType,
-		"trigger_type":  job.TriggerType,
-		"trigger_actor": job.TriggerActor,
-		"status":        job.Status,
-		"config_path":   job.ConfigPath,
-		"created_at":    job.CreatedAt,
-		"started_at":    job.StartedAt,
-		"finished_at":   job.FinishedAt,
-		"error":         job.Error,
-	}
-
-	if duration := job.Duration(); duration != nil {
-		response["duration_seconds"] = duration.Seconds()
-	}
-
-	return response
-}
-
-func (h *CIHandler) formatStepsResponse(steps []*models.CIJobStep) []gin.H {
-	result := make([]gin.H, 0, len(steps))
-	for _, step := range steps {
-		s := gin.H{
-			"id":          step.ID,
-			"name":        step.Name,
-			"step_type":   step.StepType,
-			"status":      step.Status,
-			"exit_code":   step.ExitCode,
-			"order":       step.Order,
-			"started_at":  step.StartedAt,
-			"finished_at": step.FinishedAt,
-		}
-		if duration := step.Duration(); duration != nil {
-			s["duration_seconds"] = duration.Seconds()
-		}
-		result = append(result, s)
-	}
-	return result
-}
-
-func (h *CIHandler) formatArtifactsResponse(artifacts []*models.CIArtifact) []gin.H {
-	result := make([]gin.H, 0, len(artifacts))
-	for _, artifact := range artifacts {
-		result = append(result, gin.H{
-			"id":         artifact.ID,
-			"name":       artifact.Name,
-			"path":       artifact.Path,
-			"size":       artifact.Size,
-			"checksum":   artifact.Checksum,
-			"url":        artifact.URL,
-			"created_at": artifact.CreatedAt,
-			"expires_at": artifact.ExpiresAt,
-		})
-	}
-	return result
-}
-
 // ListArtifacts lists all artifacts for a CI job
 // GET /api/v1/repos/:owner/:repo/ci/jobs/:job_id/artifacts
 func (h *CIHandler) ListArtifacts(c *gin.Context) {
@@ -792,27 +457,14 @@ func (h *CIHandler) ListArtifacts(c *gin.Context) {
 		return
 	}
 
-	// Get repository
-	repo, err := h.repoRepo.FindByOwnerUsernameAndName(c.Request.Context(), owner, repoName)
+	// Get repository (for validation)
+	_, err = h.repoRepo.FindByOwnerUsernameAndName(c.Request.Context(), owner, repoName)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "repository not found"})
 		return
 	}
 
-	// Get job
-	job, err := h.ciService.GetJob(c.Request.Context(), jobID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "job not found"})
-		return
-	}
-
-	// Verify job belongs to this repository
-	if job.RepositoryID != repo.ID {
-		c.JSON(http.StatusNotFound, gin.H{"error": "job not found"})
-		return
-	}
-
-	// Get artifacts
+	// Get artifacts from CI server
 	artifacts, err := h.ciService.GetJobArtifacts(c.Request.Context(), jobID)
 	if err != nil {
 		h.log.Error("Failed to get artifacts",
@@ -823,8 +475,18 @@ func (h *CIHandler) ListArtifacts(c *gin.Context) {
 		return
 	}
 
+	artifactResponses := make([]gin.H, 0, len(artifacts))
+	for _, artifact := range artifacts {
+		artifactResponses = append(artifactResponses, gin.H{
+			"name":     artifact.Name,
+			"size":     artifact.Size,
+			"checksum": artifact.Checksum,
+			"url":      artifact.URL,
+		})
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"artifacts": h.formatArtifactsResponse(artifacts),
+		"artifacts": artifactResponses,
 		"total":     len(artifacts),
 	})
 }
@@ -843,23 +505,10 @@ func (h *CIHandler) DownloadArtifact(c *gin.Context) {
 		return
 	}
 
-	// Get repository
-	repo, err := h.repoRepo.FindByOwnerUsernameAndName(c.Request.Context(), owner, repoName)
+	// Get repository (for validation)
+	_, err = h.repoRepo.FindByOwnerUsernameAndName(c.Request.Context(), owner, repoName)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "repository not found"})
-		return
-	}
-
-	// Get job
-	job, err := h.ciService.GetJob(c.Request.Context(), jobID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "job not found"})
-		return
-	}
-
-	// Verify job belongs to this repository
-	if job.RepositoryID != repo.ID {
-		c.JSON(http.StatusNotFound, gin.H{"error": "job not found"})
 		return
 	}
 
@@ -886,6 +535,63 @@ func (h *CIHandler) DownloadArtifact(c *gin.Context) {
 	c.Data(http.StatusOK, contentType, data)
 }
 
+// Helper methods
+
+func (h *CIHandler) formatJobResponse(job *service.CIJob) gin.H {
+	response := gin.H{
+		"id":            job.ID,
+		"run_id":        job.RunID,
+		"repository_id": job.RepositoryID,
+		"commit_sha":    job.CommitSHA,
+		"ref_name":      job.RefName,
+		"ref_type":      job.RefType,
+		"trigger_type":  job.TriggerType,
+		"trigger_actor": job.TriggerActor,
+		"status":        job.Status,
+		"config_path":   job.ConfigPath,
+		"created_at":    job.CreatedAt,
+		"started_at":    job.StartedAt,
+		"finished_at":   job.FinishedAt,
+		"error":         job.Error,
+	}
+
+	if duration := job.Duration(); duration != nil {
+		response["duration_seconds"] = duration.Seconds()
+	}
+
+	return response
+}
+
+func (h *CIHandler) formatStepsResponse(steps []service.CIStep) []gin.H {
+	result := make([]gin.H, 0, len(steps))
+	for _, step := range steps {
+		s := gin.H{
+			"name":          step.Name,
+			"step_type":     step.StepType,
+			"status":        step.Status,
+			"exit_code":     step.ExitCode,
+			"duration_secs": step.DurationSecs,
+			"started_at":    step.StartedAt,
+			"finished_at":   step.FinishedAt,
+		}
+		result = append(result, s)
+	}
+	return result
+}
+
+func (h *CIHandler) formatArtifactsResponse(artifacts []service.CIArtifact) []gin.H {
+	result := make([]gin.H, 0, len(artifacts))
+	for _, artifact := range artifacts {
+		result = append(result, gin.H{
+			"name":     artifact.Name,
+			"size":     artifact.Size,
+			"checksum": artifact.Checksum,
+			"url":      artifact.URL,
+		})
+	}
+	return result
+}
+
 func (h *CIHandler) sendSSE(w http.ResponseWriter, eventType string, data interface{}) {
 	jsonData, err := json.Marshal(data)
 	if err != nil {
@@ -898,4 +604,120 @@ func (h *CIHandler) sendSSE(w http.ResponseWriter, eventType string, data interf
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()
 	}
+}
+
+// ReceiveLogs receives logs from the CI runner (webhook endpoint)
+// This is kept for backwards compatibility but logs are now fetched directly
+// POST /api/v1/ci/jobs/:job_id/logs
+func (h *CIHandler) ReceiveLogs(c *gin.Context) {
+	jobIDStr := c.Param("job_id")
+
+	jobID, err := uuid.Parse(jobIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid job ID"})
+		return
+	}
+
+	// For backwards compatibility, we accept the logs but broadcast them via SSE
+	var entries []service.CIRunnerLogEntry
+	if err := c.ShouldBindJSON(&entries); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Broadcast log entries to SSE subscribers
+	for _, entry := range entries {
+		h.ciService.BroadcastLogEvent(jobID, &service.CILog{
+			Timestamp: entry.Timestamp,
+			Level:     entry.Level,
+			StepName:  entry.StepName,
+			Message:   entry.Message,
+			Sequence:  entry.Sequence,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Logs received",
+		"count":   len(entries),
+	})
+}
+
+// CompleteJob handles job completion webhook from CI runner
+// POST /api/v1/ci/jobs/:job_id/complete
+func (h *CIHandler) CompleteJob(c *gin.Context) {
+	jobIDStr := c.Param("job_id")
+
+	jobID, err := uuid.Parse(jobIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid job ID"})
+		return
+	}
+
+	// Parse completion event
+	var completion struct {
+		Status     string `json:"status"`
+		StartedAt  string `json:"started_at,omitempty"`
+		FinishedAt string `json:"finished_at,omitempty"`
+		Error      string `json:"error,omitempty"`
+	}
+
+	if err := c.ShouldBindJSON(&completion); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	h.log.Info("Received job completion event",
+		logger.String("job_id", jobIDStr),
+		logger.String("status", completion.Status),
+	)
+
+	// Parse timestamps
+	var startedAt, finishedAt *time.Time
+	if completion.StartedAt != "" {
+		if t, err := time.Parse(time.RFC3339, completion.StartedAt); err == nil {
+			startedAt = &t
+		}
+	}
+	if completion.FinishedAt != "" {
+		if t, err := time.Parse(time.RFC3339, completion.FinishedAt); err == nil {
+			finishedAt = &t
+		}
+	}
+
+	// Broadcast completion event to SSE subscribers
+	h.ciService.BroadcastStatusEvent(jobID, completion.Status, startedAt, finishedAt)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Completion event received",
+		"job_id":  jobID,
+	})
+}
+
+// WebhookJobUpdate handles generic job update webhook from CI runner
+// POST /api/v1/ci/webhook
+func (h *CIHandler) WebhookJobUpdate(c *gin.Context) {
+	var update struct {
+		JobID  uuid.UUID `json:"job_id"`
+		Status string    `json:"status"`
+		Event  string    `json:"event"`
+	}
+
+	if err := c.ShouldBindJSON(&update); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	h.log.Info("Received CI webhook",
+		logger.String("job_id", update.JobID.String()),
+		logger.String("status", update.Status),
+		logger.String("event", update.Event),
+	)
+
+	// Broadcast the update
+	h.ciService.BroadcastStatusEvent(update.JobID, update.Status, nil, nil)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Webhook received",
+		"job_id":  update.JobID,
+	})
 }

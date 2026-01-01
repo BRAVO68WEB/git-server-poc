@@ -15,9 +15,6 @@ func main() {
 		&models.Repository{},
 		&models.SSHKey{},
 		&models.Token{},
-		&models.CIJob{},
-		&models.CIArtifact{},
-		&models.CIJobLog{},
 	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to load gorm schema: %v\n", err)

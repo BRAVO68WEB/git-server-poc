@@ -1,12 +1,10 @@
 package service
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"sync"
 	"time"
 
@@ -14,19 +12,17 @@ import (
 	"github.com/bravo68web/stasis/internal/domain/models"
 	"github.com/bravo68web/stasis/internal/domain/repository"
 	"github.com/bravo68web/stasis/pkg/logger"
+	"github.com/go-resty/resty/v2"
 	"github.com/google/uuid"
 )
 
 // CIService handles CI/CD integration with the CI runner
+// All data is fetched directly from the CI server - no local database storage
 type CIService struct {
-	config       *config.CIConfig
-	httpClient   *http.Client
-	jobRepo      repository.CIJobRepository
-	stepRepo     repository.CIJobStepRepository
-	logRepo      repository.CIJobLogRepository
-	artifactRepo repository.CIArtifactRepository
-	repoRepo     repository.RepoRepository
-	log          *logger.Logger
+	config   *config.CIConfig
+	client   *resty.Client
+	repoRepo repository.RepoRepository
+	log      *logger.Logger
 
 	// SSE subscribers for real-time updates
 	subscribers map[uuid.UUID][]chan *JobEvent
@@ -102,16 +98,19 @@ type CIRunnerJobResponse struct {
 		FinishedAt   string  `json:"finished_at"`
 		DurationSecs float64 `json:"duration_secs"`
 	} `json:"result,omitempty"`
-	Artifacts []struct {
-		Name     string  `json:"name"`
-		Size     int64   `json:"size"`
-		Checksum string  `json:"checksum"`
-		URL      *string `json:"url,omitempty"`
-	} `json:"artifacts,omitempty"`
+	Artifacts []CIRunnerArtifact `json:"artifacts,omitempty"`
 }
 
-// LogEntry represents a log entry from the CI runner
-type LogEntry struct {
+// CIRunnerArtifact represents an artifact from the CI runner
+type CIRunnerArtifact struct {
+	Name     string  `json:"name"`
+	Size     int64   `json:"size"`
+	Checksum string  `json:"checksum"`
+	URL      *string `json:"url,omitempty"`
+}
+
+// CIRunnerLogEntry represents a log entry from the CI runner
+type CIRunnerLogEntry struct {
 	JobID     uuid.UUID `json:"job_id"`
 	RunID     uuid.UUID `json:"run_id"`
 	Timestamp time.Time `json:"timestamp"`
@@ -121,27 +120,41 @@ type LogEntry struct {
 	Sequence  uint64    `json:"sequence"`
 }
 
+// CIRunnerLogsResponse represents the logs response from CI runner
+type CIRunnerLogsResponse struct {
+	JobID string             `json:"job_id"`
+	Logs  []CIRunnerLogEntry `json:"logs"`
+	Total int64              `json:"total"`
+}
+
+// CIRunnerJobsListResponse represents the jobs list response from CI runner
+type CIRunnerJobsListResponse struct {
+	Jobs  []CIRunnerJobResponse `json:"jobs"`
+	Total int64                 `json:"total"`
+}
+
 // NewCIService creates a new CI service instance
 func NewCIService(
 	cfg *config.CIConfig,
-	jobRepo repository.CIJobRepository,
-	stepRepo repository.CIJobStepRepository,
-	logRepo repository.CIJobLogRepository,
-	artifactRepo repository.CIArtifactRepository,
 	repoRepo repository.RepoRepository,
 ) *CIService {
+	client := resty.New().
+		SetTimeout(cfg.Timeout()).
+		SetRetryCount(3).
+		SetRetryWaitTime(100 * time.Millisecond).
+		SetRetryMaxWaitTime(2 * time.Second)
+
+	// Set API key header if configured
+	if cfg.APIKey != "" {
+		client.SetHeader("X-API-Key", cfg.APIKey)
+	}
+
 	return &CIService{
-		config: cfg,
-		httpClient: &http.Client{
-			Timeout: cfg.Timeout(),
-		},
-		jobRepo:      jobRepo,
-		stepRepo:     stepRepo,
-		logRepo:      logRepo,
-		artifactRepo: artifactRepo,
-		repoRepo:     repoRepo,
-		log:          logger.Get(),
-		subscribers:  make(map[uuid.UUID][]chan *JobEvent),
+		config:      cfg,
+		client:      client,
+		repoRepo:    repoRepo,
+		log:         logger.Get(),
+		subscribers: make(map[uuid.UUID][]chan *JobEvent),
 	}
 }
 
@@ -151,68 +164,14 @@ func (s *CIService) IsEnabled() bool {
 }
 
 // TriggerJob creates a new CI job and submits it to the CI runner
-func (s *CIService) TriggerJob(ctx context.Context, req *TriggerJobRequest) (*models.CIJob, error) {
+func (s *CIService) TriggerJob(ctx context.Context, req *TriggerJobRequest) (*CIJob, error) {
 	if !s.IsEnabled() {
 		return nil, fmt.Errorf("CI integration is not enabled")
 	}
 
-	// Create the job in the database
-	job := &models.CIJob{
-		ID:           uuid.New(),
-		RunID:        uuid.New(),
-		RepositoryID: req.RepositoryID,
-		CommitSHA:    req.CommitSHA,
-		RefName:      req.RefName,
-		RefType:      req.RefType,
-		TriggerType:  req.TriggerType,
-		TriggerActor: req.TriggerActor,
-		Status:       models.CIJobStatusPending,
-		ConfigPath:   s.config.GetConfigPath(),
-	}
+	jobID := uuid.New()
+	runID := uuid.New()
 
-	if err := s.jobRepo.Create(ctx, job); err != nil {
-		s.log.Error("Failed to create CI job in database",
-			logger.Error(err),
-			logger.String("repository_id", req.RepositoryID.String()),
-		)
-		return nil, fmt.Errorf("failed to create job: %w", err)
-	}
-
-	// Submit to CI runner asynchronously
-	go func() {
-		submitCtx, cancel := context.WithTimeout(context.Background(), s.config.Timeout())
-		defer cancel()
-
-		if err := s.submitToCIRunner(submitCtx, job, req); err != nil {
-			s.log.Error("Failed to submit job to CI runner",
-				logger.Error(err),
-				logger.String("job_id", job.ID.String()),
-			)
-			// Update job status to error
-			errMsg := err.Error()
-			_ = s.jobRepo.UpdateStatus(context.Background(), job.ID, models.CIJobStatusError, &errMsg)
-		}
-	}()
-
-	return job, nil
-}
-
-// TriggerJobRequest contains the information needed to trigger a CI job
-type TriggerJobRequest struct {
-	RepositoryID uuid.UUID
-	Owner        string
-	RepoName     string
-	CloneURL     string
-	CommitSHA    string
-	RefName      string
-	RefType      models.CIRefType
-	TriggerType  models.CITriggerType
-	TriggerActor string
-	Metadata     map[string]string
-}
-
-// submitToCIRunner submits a job to the CI runner service
-func (s *CIService) submitToCIRunner(ctx context.Context, job *models.CIJob, req *TriggerJobRequest) error {
 	// Convert ref type to CI runner format
 	refType := "Branch"
 	if req.RefType == models.CIRefTypeTag {
@@ -231,8 +190,8 @@ func (s *CIService) submitToCIRunner(ctx context.Context, job *models.CIJob, req
 	}
 
 	submitReq := SubmitJobRequest{
-		JobID: job.ID,
-		RunID: job.RunID,
+		JobID: jobID,
+		RunID: runID,
 		Repository: RepositoryInfo{
 			Owner:     req.Owner,
 			Name:      req.RepoName,
@@ -251,293 +210,334 @@ func (s *CIService) submitToCIRunner(ctx context.Context, job *models.CIJob, req
 		Priority:   "Normal",
 	}
 
-	body, err := json.Marshal(submitReq)
-	if err != nil {
-		return fmt.Errorf("failed to marshal request: %w", err)
-	}
-
 	url := fmt.Sprintf("%s/api/v1/jobs", s.config.ServerURL)
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+
+	resp, err := s.client.R().
+		SetContext(ctx).
+		SetHeader("Content-Type", "application/json").
+		SetBody(submitReq).
+		Post(url)
+
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to submit job: %w", err)
 	}
 
-	httpReq.Header.Set("Content-Type", "application/json")
-	if s.config.APIKey != "" {
-		httpReq.Header.Set("X-API-Key", s.config.APIKey)
-	}
-
-	resp, err := s.httpClient.Do(httpReq)
-	if err != nil {
-		return fmt.Errorf("failed to submit job: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("CI runner returned status %d: %s", resp.StatusCode, string(respBody))
-	}
-
-	// Update job status to queued
-	if err := s.jobRepo.UpdateStatus(ctx, job.ID, models.CIJobStatusQueued, nil); err != nil {
-		s.log.Warn("Failed to update job status to queued",
-			logger.Error(err),
-			logger.String("job_id", job.ID.String()),
-		)
+	if resp.StatusCode() != 200 && resp.StatusCode() != 202 {
+		return nil, fmt.Errorf("CI runner returned status %d: %s", resp.StatusCode(), resp.String())
 	}
 
 	s.log.Info("Job submitted to CI runner",
-		logger.String("job_id", job.ID.String()),
-		logger.String("run_id", job.RunID.String()),
+		logger.String("job_id", jobID.String()),
+		logger.String("run_id", runID.String()),
 	)
 
-	return nil
+	// Return a minimal job response
+	return &CIJob{
+		ID:           jobID,
+		RunID:        runID,
+		RepositoryID: req.RepositoryID,
+		CommitSHA:    req.CommitSHA,
+		RefName:      req.RefName,
+		RefType:      string(req.RefType),
+		TriggerType:  string(req.TriggerType),
+		TriggerActor: req.TriggerActor,
+		Status:       "queued",
+		ConfigPath:   s.config.GetConfigPath(),
+		CreatedAt:    time.Now(),
+	}, nil
 }
 
-// GetJob retrieves a CI job by ID
-func (s *CIService) GetJob(ctx context.Context, jobID uuid.UUID) (*models.CIJob, error) {
-	return s.jobRepo.FindByID(ctx, jobID)
+// TriggerJobRequest contains the information needed to trigger a CI job
+type TriggerJobRequest struct {
+	RepositoryID uuid.UUID
+	Owner        string
+	RepoName     string
+	CloneURL     string
+	CommitSHA    string
+	RefName      string
+	RefType      models.CIRefType
+	TriggerType  models.CITriggerType
+	TriggerActor string
+	Metadata     map[string]string
 }
 
-// GetJobByRunID retrieves a CI job by run ID
-func (s *CIService) GetJobByRunID(ctx context.Context, runID uuid.UUID) (*models.CIJob, error) {
-	return s.jobRepo.FindByRunID(ctx, runID)
+// CIJob represents a CI job (fetched from CI server, not stored locally)
+type CIJob struct {
+	ID           uuid.UUID    `json:"id"`
+	RunID        uuid.UUID    `json:"run_id"`
+	RepositoryID uuid.UUID    `json:"repository_id"`
+	CommitSHA    string       `json:"commit_sha"`
+	RefName      string       `json:"ref_name"`
+	RefType      string       `json:"ref_type"`
+	TriggerType  string       `json:"trigger_type"`
+	TriggerActor string       `json:"trigger_actor"`
+	Status       string       `json:"status"`
+	Error        *string      `json:"error,omitempty"`
+	ConfigPath   string       `json:"config_path"`
+	CreatedAt    time.Time    `json:"created_at"`
+	StartedAt    *time.Time   `json:"started_at,omitempty"`
+	FinishedAt   *time.Time   `json:"finished_at,omitempty"`
+	Steps        []CIStep     `json:"steps,omitempty"`
+	Artifacts    []CIArtifact `json:"artifacts,omitempty"`
 }
 
-// ListJobsByRepository lists CI jobs for a repository with pagination
-func (s *CIService) ListJobsByRepository(ctx context.Context, repoID uuid.UUID, limit, offset int) ([]*models.CIJob, int64, error) {
-	jobs, err := s.jobRepo.FindByRepository(ctx, repoID, limit, offset)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	total, err := s.jobRepo.CountByRepository(ctx, repoID)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	return jobs, total, nil
+// CIStep represents a CI job step
+type CIStep struct {
+	Name         string     `json:"name"`
+	StepType     string     `json:"step_type"`
+	Status       string     `json:"status"`
+	ExitCode     int        `json:"exit_code"`
+	DurationSecs float64    `json:"duration_secs"`
+	StartedAt    *time.Time `json:"started_at,omitempty"`
+	FinishedAt   *time.Time `json:"finished_at,omitempty"`
 }
 
-// ListJobsByRef lists CI jobs for a specific ref with pagination
-func (s *CIService) ListJobsByRef(ctx context.Context, repoID uuid.UUID, refName string, limit, offset int) ([]*models.CIJob, error) {
-	return s.jobRepo.FindByRef(ctx, repoID, refName, limit, offset)
+// CIArtifact represents a CI artifact
+type CIArtifact struct {
+	Name     string  `json:"name"`
+	Size     int64   `json:"size"`
+	Checksum string  `json:"checksum"`
+	URL      *string `json:"url,omitempty"`
 }
 
-// GetJobLogs retrieves logs for a CI job with pagination
-func (s *CIService) GetJobLogs(ctx context.Context, jobID uuid.UUID, limit, offset int) ([]*models.CIJobLog, int64, error) {
-	logs, err := s.logRepo.FindByJobID(ctx, jobID, limit, offset)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	total, err := s.logRepo.CountByJobID(ctx, jobID)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	return logs, total, nil
+// CILog represents a CI log entry
+type CILog struct {
+	Timestamp time.Time `json:"timestamp"`
+	Level     string    `json:"level"`
+	StepName  *string   `json:"step_name,omitempty"`
+	Message   string    `json:"message"`
+	Sequence  uint64    `json:"sequence"`
 }
 
-// GetJobLogsAfterSequence retrieves logs after a specific sequence number (for streaming)
-func (s *CIService) GetJobLogsAfterSequence(ctx context.Context, jobID uuid.UUID, afterSequence uint64, limit int) ([]*models.CIJobLog, error) {
-	return s.logRepo.FindByJobIDAfterSequence(ctx, jobID, afterSequence, limit)
-}
-
-// ReceiveLogs receives log entries from the CI runner and stores them
-func (s *CIService) ReceiveLogs(ctx context.Context, jobID uuid.UUID, entries []LogEntry) error {
-	if len(entries) == 0 {
+// Duration returns the duration of the job if it has finished
+func (j *CIJob) Duration() *time.Duration {
+	if j.StartedAt == nil {
 		return nil
 	}
+	endTime := time.Now()
+	if j.FinishedAt != nil {
+		endTime = *j.FinishedAt
+	}
+	duration := endTime.Sub(*j.StartedAt)
+	return &duration
+}
 
-	// Convert to database models
-	logs := make([]*models.CIJobLog, 0, len(entries))
-	for _, entry := range entries {
-		level := models.CILogLevelInfo
-		switch entry.Level {
-		case "debug":
-			level = models.CILogLevelDebug
-		case "warning", "warn":
-			level = models.CILogLevelWarning
-		case "error":
-			level = models.CILogLevelError
-		}
+// IsFinished returns true if the job has completed
+func (j *CIJob) IsFinished() bool {
+	switch j.Status {
+	case "success", "failed", "cancelled", "timed_out", "error":
+		return true
+	default:
+		return false
+	}
+}
 
-		logs = append(logs, &models.CIJobLog{
-			JobID:     jobID,
+// GetJob retrieves a CI job by ID from the CI server
+func (s *CIService) GetJob(ctx context.Context, jobID uuid.UUID) (*CIJob, error) {
+	if !s.IsEnabled() {
+		return nil, fmt.Errorf("CI integration is not enabled")
+	}
+
+	url := fmt.Sprintf("%s/api/v1/jobs/%s", s.config.ServerURL, jobID)
+
+	var runnerResp CIRunnerJobResponse
+	resp, err := s.client.R().
+		SetContext(ctx).
+		SetResult(&runnerResp).
+		Get(url)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch job: %w", err)
+	}
+
+	if resp.StatusCode() == 404 {
+		return nil, fmt.Errorf("job not found")
+	}
+
+	if resp.StatusCode() != 200 {
+		return nil, fmt.Errorf("CI runner returned status %d: %s", resp.StatusCode(), resp.String())
+	}
+
+	return s.mapRunnerResponseToJob(&runnerResp), nil
+}
+
+// GetJobByRunID retrieves a CI job by run ID from the CI server
+func (s *CIService) GetJobByRunID(ctx context.Context, runID uuid.UUID) (*CIJob, error) {
+	// CI runner uses job_id as the primary identifier
+	// This method might need to query with a different endpoint if supported
+	return s.GetJob(ctx, runID)
+}
+
+// ListJobsByRepository lists CI jobs for a repository from the CI server
+func (s *CIService) ListJobsByRepository(ctx context.Context, repoID uuid.UUID, limit, offset int) ([]*CIJob, int64, error) {
+	if !s.IsEnabled() {
+		return nil, 0, fmt.Errorf("CI integration is not enabled")
+	}
+
+	// Get repository info to build the query
+	repo, err := s.repoRepo.FindByID(ctx, repoID)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to find repository: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/api/v1/jobs", s.config.ServerURL)
+
+	var listResp CIRunnerJobsListResponse
+	resp, err := s.client.R().
+		SetContext(ctx).
+		SetQueryParams(map[string]string{
+			"owner":  repo.Owner.Username,
+			"repo":   repo.Name,
+			"limit":  fmt.Sprintf("%d", limit),
+			"offset": fmt.Sprintf("%d", offset),
+		}).
+		SetResult(&listResp).
+		Get(url)
+
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to list jobs: %w", err)
+	}
+
+	if resp.StatusCode() != 200 {
+		return nil, 0, fmt.Errorf("CI runner returned status %d: %s", resp.StatusCode(), resp.String())
+	}
+
+	jobs := make([]*CIJob, 0, len(listResp.Jobs))
+	for i := range listResp.Jobs {
+		job := s.mapRunnerResponseToJob(&listResp.Jobs[i])
+		job.RepositoryID = repoID
+		jobs = append(jobs, job)
+	}
+
+	return jobs, listResp.Total, nil
+}
+
+// ListJobsByRef lists CI jobs for a specific ref from the CI server
+func (s *CIService) ListJobsByRef(ctx context.Context, repoID uuid.UUID, refName string, limit, offset int) ([]*CIJob, error) {
+	if !s.IsEnabled() {
+		return nil, fmt.Errorf("CI integration is not enabled")
+	}
+
+	repo, err := s.repoRepo.FindByID(ctx, repoID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find repository: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/api/v1/jobs", s.config.ServerURL)
+
+	var listResp CIRunnerJobsListResponse
+	resp, err := s.client.R().
+		SetContext(ctx).
+		SetQueryParams(map[string]string{
+			"owner":    repo.Owner.Username,
+			"repo":     repo.Name,
+			"ref_name": refName,
+			"limit":    fmt.Sprintf("%d", limit),
+			"offset":   fmt.Sprintf("%d", offset),
+		}).
+		SetResult(&listResp).
+		Get(url)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to list jobs by ref: %w", err)
+	}
+
+	if resp.StatusCode() != 200 {
+		return nil, fmt.Errorf("CI runner returned status %d: %s", resp.StatusCode(), resp.String())
+	}
+
+	jobs := make([]*CIJob, 0, len(listResp.Jobs))
+	for i := range listResp.Jobs {
+		job := s.mapRunnerResponseToJob(&listResp.Jobs[i])
+		job.RepositoryID = repoID
+		jobs = append(jobs, job)
+	}
+
+	return jobs, nil
+}
+
+// GetJobLogs retrieves logs for a CI job from the CI server
+func (s *CIService) GetJobLogs(ctx context.Context, jobID uuid.UUID, limit, offset int) ([]*CILog, int64, error) {
+	if !s.IsEnabled() {
+		return nil, 0, fmt.Errorf("CI integration is not enabled")
+	}
+
+	url := fmt.Sprintf("%s/api/v1/jobs/%s/logs", s.config.ServerURL, jobID)
+
+	var logsResp CIRunnerLogsResponse
+	resp, err := s.client.R().
+		SetContext(ctx).
+		SetQueryParams(map[string]string{
+			"limit":  fmt.Sprintf("%d", limit),
+			"offset": fmt.Sprintf("%d", offset),
+		}).
+		SetResult(&logsResp).
+		Get(url)
+
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to fetch logs: %w", err)
+	}
+
+	if resp.StatusCode() == 404 {
+		return nil, 0, fmt.Errorf("job not found")
+	}
+
+	if resp.StatusCode() != 200 {
+		return nil, 0, fmt.Errorf("CI runner returned status %d: %s", resp.StatusCode(), resp.String())
+	}
+
+	logs := make([]*CILog, 0, len(logsResp.Logs))
+	for _, entry := range logsResp.Logs {
+		logs = append(logs, &CILog{
+			Timestamp: entry.Timestamp,
+			Level:     entry.Level,
 			StepName:  entry.StepName,
-			Level:     level,
 			Message:   entry.Message,
 			Sequence:  entry.Sequence,
+		})
+	}
+
+	return logs, logsResp.Total, nil
+}
+
+// GetJobLogsAfterSequence retrieves logs after a specific sequence number
+func (s *CIService) GetJobLogsAfterSequence(ctx context.Context, jobID uuid.UUID, afterSequence uint64, limit int) ([]*CILog, error) {
+	if !s.IsEnabled() {
+		return nil, fmt.Errorf("CI integration is not enabled")
+	}
+
+	url := fmt.Sprintf("%s/api/v1/jobs/%s/logs", s.config.ServerURL, jobID)
+
+	var logsResp CIRunnerLogsResponse
+	resp, err := s.client.R().
+		SetContext(ctx).
+		SetQueryParams(map[string]string{
+			"after_sequence": fmt.Sprintf("%d", afterSequence),
+			"limit":          fmt.Sprintf("%d", limit),
+		}).
+		SetResult(&logsResp).
+		Get(url)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch logs: %w", err)
+	}
+
+	if resp.StatusCode() != 200 {
+		return nil, fmt.Errorf("CI runner returned status %d: %s", resp.StatusCode(), resp.String())
+	}
+
+	logs := make([]*CILog, 0, len(logsResp.Logs))
+	for _, entry := range logsResp.Logs {
+		logs = append(logs, &CILog{
 			Timestamp: entry.Timestamp,
+			Level:     entry.Level,
+			StepName:  entry.StepName,
+			Message:   entry.Message,
+			Sequence:  entry.Sequence,
 		})
 	}
 
-	// Store in database
-	if err := s.logRepo.CreateBatch(ctx, logs); err != nil {
-		return fmt.Errorf("failed to store logs: %w", err)
-	}
-
-	// Broadcast to subscribers
-	for _, log := range logs {
-		s.broadcastEvent(jobID, &JobEvent{
-			Type:      "log",
-			JobID:     jobID,
-			Timestamp: log.Timestamp,
-			Data:      s.mustMarshal(log),
-		})
-	}
-
-	return nil
-}
-
-// UpdateJobStatus updates the status of a CI job
-func (s *CIService) UpdateJobStatus(ctx context.Context, jobID uuid.UUID, status models.CIJobStatus, errorMsg *string) error {
-	if err := s.jobRepo.UpdateStatus(ctx, jobID, status, errorMsg); err != nil {
-		return err
-	}
-
-	// Broadcast status update
-	s.broadcastEvent(jobID, &JobEvent{
-		Type:      "status",
-		JobID:     jobID,
-		Timestamp: time.Now(),
-		Data: s.mustMarshal(map[string]interface{}{
-			"status": status,
-			"error":  errorMsg,
-		}),
-	})
-
-	return nil
-}
-
-// UpdateJobCompletion updates a job with completion details including timestamps
-func (s *CIService) UpdateJobCompletion(ctx context.Context, jobID uuid.UUID, status models.CIJobStatus, startedAt, finishedAt *time.Time, errorMsg *string) error {
-	// Get the job first
-	job, err := s.jobRepo.FindByID(ctx, jobID)
-	if err != nil {
-		return err
-	}
-
-	// Update fields
-	job.Status = status
-	if startedAt != nil {
-		job.StartedAt = startedAt
-	}
-	if finishedAt != nil {
-		job.FinishedAt = finishedAt
-	}
-	if errorMsg != nil {
-		job.Error = errorMsg
-	}
-
-	// Save the job
-	if err := s.jobRepo.Update(ctx, job); err != nil {
-		return err
-	}
-
-	// Broadcast status update
-	s.broadcastEvent(jobID, &JobEvent{
-		Type:      "status",
-		JobID:     jobID,
-		Timestamp: time.Now(),
-		Data: s.mustMarshal(map[string]interface{}{
-			"status":      status,
-			"error":       errorMsg,
-			"started_at":  startedAt,
-			"finished_at": finishedAt,
-		}),
-	})
-
-	return nil
-}
-
-// UpdateJobFromRunner syncs job state from the CI runner response
-func (s *CIService) UpdateJobFromRunner(ctx context.Context, jobID uuid.UUID, resp *CIRunnerJobResponse) error {
-	job, err := s.jobRepo.FindByID(ctx, jobID)
-	if err != nil {
-		return err
-	}
-
-	// Map CI runner status to local status
-	status := mapCIRunnerStatus(resp.Status)
-	job.Status = status
-
-	if resp.Error != nil {
-		job.Error = resp.Error
-	}
-
-	// Parse timestamps if available
-	if resp.StartedAt != nil {
-		if t, err := time.Parse(time.RFC3339, *resp.StartedAt); err == nil {
-			job.StartedAt = &t
-		}
-	}
-	if resp.FinishedAt != nil {
-		if t, err := time.Parse(time.RFC3339, *resp.FinishedAt); err == nil {
-			job.FinishedAt = &t
-		}
-	}
-
-	if err := s.jobRepo.Update(ctx, job); err != nil {
-		return err
-	}
-
-	// Update steps if result is available
-	if resp.Result != nil {
-		for i, stepData := range resp.Result.Steps {
-			step := &models.CIJobStep{
-				JobID:    jobID,
-				Name:     stepData.Name,
-				StepType: mapStepType(stepData.StepType),
-				Status:   mapStepStatus(stepData.ExitCode),
-				ExitCode: &stepData.ExitCode,
-				Order:    i,
-			}
-
-			if t, err := time.Parse(time.RFC3339, stepData.StartedAt); err == nil {
-				step.StartedAt = &t
-			}
-			if t, err := time.Parse(time.RFC3339, stepData.FinishedAt); err == nil {
-				step.FinishedAt = &t
-			}
-
-			if err := s.stepRepo.Create(ctx, step); err != nil {
-				s.log.Warn("Failed to create step record",
-					logger.Error(err),
-					logger.String("step_name", stepData.Name),
-				)
-			}
-		}
-	}
-
-	// Update artifacts
-	for _, artifactData := range resp.Artifacts {
-		artifact := &models.CIArtifact{
-			JobID:    jobID,
-			Name:     artifactData.Name,
-			Size:     artifactData.Size,
-			Checksum: artifactData.Checksum,
-			URL:      artifactData.URL,
-		}
-
-		if err := s.artifactRepo.Create(ctx, artifact); err != nil {
-			s.log.Warn("Failed to create artifact record",
-				logger.Error(err),
-				logger.String("artifact_name", artifactData.Name),
-			)
-		}
-	}
-
-	// Broadcast update
-	s.broadcastEvent(jobID, &JobEvent{
-		Type:      "status",
-		JobID:     jobID,
-		Timestamp: time.Now(),
-		Data:      s.mustMarshal(resp),
-	})
-
-	return nil
+	return logs, nil
 }
 
 // CancelJob cancels a running CI job
@@ -546,44 +546,31 @@ func (s *CIService) CancelJob(ctx context.Context, jobID uuid.UUID) error {
 		return fmt.Errorf("CI integration is not enabled")
 	}
 
-	// Send cancel request to CI runner
 	url := fmt.Sprintf("%s/api/v1/jobs/%s/cancel", s.config.ServerURL, jobID)
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
 
-	if s.config.APIKey != "" {
-		httpReq.Header.Set("X-API-Key", s.config.APIKey)
-	}
+	resp, err := s.client.R().
+		SetContext(ctx).
+		Post(url)
 
-	resp, err := s.httpClient.Do(httpReq)
 	if err != nil {
 		return fmt.Errorf("failed to cancel job: %w", err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("CI runner returned status %d: %s", resp.StatusCode, string(respBody))
-	}
-
-	// Update local status
-	if err := s.jobRepo.UpdateStatus(ctx, jobID, models.CIJobStatusCancelled, nil); err != nil {
-		return err
+	if resp.StatusCode() != 200 && resp.StatusCode() != 204 {
+		return fmt.Errorf("CI runner returned status %d: %s", resp.StatusCode(), resp.String())
 	}
 
 	return nil
 }
 
 // RetryJob retries a failed CI job
-func (s *CIService) RetryJob(ctx context.Context, jobID uuid.UUID, actor string) (*models.CIJob, error) {
+func (s *CIService) RetryJob(ctx context.Context, jobID uuid.UUID, actor string) (*CIJob, error) {
 	if !s.IsEnabled() {
 		return nil, fmt.Errorf("CI integration is not enabled")
 	}
 
-	// Get the original job
-	originalJob, err := s.jobRepo.FindByID(ctx, jobID)
+	// Get the original job to get its details
+	originalJob, err := s.GetJob(ctx, jobID)
 	if err != nil {
 		return nil, err
 	}
@@ -595,6 +582,11 @@ func (s *CIService) RetryJob(ctx context.Context, jobID uuid.UUID, actor string)
 	}
 
 	// Create a new trigger request based on the original job
+	refType := models.CIRefTypeBranch
+	if originalJob.RefType == "tag" {
+		refType = models.CIRefTypeTag
+	}
+
 	req := &TriggerJobRequest{
 		RepositoryID: originalJob.RepositoryID,
 		Owner:        repo.Owner.Username,
@@ -602,8 +594,8 @@ func (s *CIService) RetryJob(ctx context.Context, jobID uuid.UUID, actor string)
 		CloneURL:     s.buildCloneURL(repo),
 		CommitSHA:    originalJob.CommitSHA,
 		RefName:      originalJob.RefName,
-		RefType:      originalJob.RefType,
-		TriggerType:  models.CITriggerTypeManual, // Retry is always manual
+		RefType:      refType,
+		TriggerType:  models.CITriggerTypeManual,
 		TriggerActor: actor,
 		Metadata: map[string]string{
 			"retry_of": jobID.String(),
@@ -611,6 +603,114 @@ func (s *CIService) RetryJob(ctx context.Context, jobID uuid.UUID, actor string)
 	}
 
 	return s.TriggerJob(ctx, req)
+}
+
+// GetJobArtifacts retrieves artifacts for a CI job from the CI server
+func (s *CIService) GetJobArtifacts(ctx context.Context, jobID uuid.UUID) ([]*CIArtifact, error) {
+	if !s.IsEnabled() {
+		return nil, fmt.Errorf("CI integration is not enabled")
+	}
+
+	// Get job which includes artifacts
+	job, err := s.GetJob(ctx, jobID)
+	if err != nil {
+		return nil, err
+	}
+
+	artifacts := make([]*CIArtifact, 0, len(job.Artifacts))
+	for i := range job.Artifacts {
+		artifacts = append(artifacts, &job.Artifacts[i])
+	}
+
+	return artifacts, nil
+}
+
+// DownloadArtifact downloads an artifact from the CI runner
+func (s *CIService) DownloadArtifact(ctx context.Context, jobID uuid.UUID, artifactName string) ([]byte, string, error) {
+	if !s.IsEnabled() {
+		return nil, "", fmt.Errorf("CI integration is not enabled")
+	}
+
+	url := fmt.Sprintf("%s/api/v1/jobs/%s/artifacts/%s", s.config.ServerURL, jobID, artifactName)
+
+	resp, err := s.client.R().
+		SetContext(ctx).
+		SetDoNotParseResponse(true).
+		Get(url)
+
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to download artifact: %w", err)
+	}
+	defer resp.RawBody().Close()
+
+	if resp.StatusCode() == 404 {
+		return nil, "", fmt.Errorf("artifact not found")
+	}
+
+	if resp.StatusCode() != 200 {
+		body, _ := io.ReadAll(resp.RawBody())
+		return nil, "", fmt.Errorf("CI runner returned status %d: %s", resp.StatusCode(), string(body))
+	}
+
+	data, err := io.ReadAll(resp.RawBody())
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to read artifact data: %w", err)
+	}
+
+	contentType := resp.Header().Get("Content-Type")
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	return data, contentType, nil
+}
+
+// GetJobSteps retrieves steps for a CI job from the CI server
+func (s *CIService) GetJobSteps(ctx context.Context, jobID uuid.UUID) ([]*CIStep, error) {
+	if !s.IsEnabled() {
+		return nil, fmt.Errorf("CI integration is not enabled")
+	}
+
+	// Get job which includes steps
+	job, err := s.GetJob(ctx, jobID)
+	if err != nil {
+		return nil, err
+	}
+
+	steps := make([]*CIStep, 0, len(job.Steps))
+	for i := range job.Steps {
+		steps = append(steps, &job.Steps[i])
+	}
+
+	return steps, nil
+}
+
+// GetLatestJobByRepository gets the latest job for a repository from the CI server
+func (s *CIService) GetLatestJobByRepository(ctx context.Context, repoID uuid.UUID) (*CIJob, error) {
+	jobs, _, err := s.ListJobsByRepository(ctx, repoID, 1, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(jobs) == 0 {
+		return nil, nil
+	}
+
+	return jobs[0], nil
+}
+
+// GetLatestJobByRef gets the latest job for a specific ref from the CI server
+func (s *CIService) GetLatestJobByRef(ctx context.Context, repoID uuid.UUID, refName string) (*CIJob, error) {
+	jobs, err := s.ListJobsByRef(ctx, repoID, refName, 1, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(jobs) == 0 {
+		return nil, nil
+	}
+
+	return jobs[0], nil
 }
 
 // Subscribe subscribes to job events for real-time updates
@@ -660,132 +760,28 @@ func (s *CIService) broadcastEvent(jobID uuid.UUID, event *JobEvent) {
 	}
 }
 
-// SyncJobStatus fetches the latest status from CI runner and updates local state
-func (s *CIService) SyncJobStatus(ctx context.Context, jobID uuid.UUID) (*models.CIJob, error) {
-	if !s.IsEnabled() {
-		return nil, fmt.Errorf("CI integration is not enabled")
-	}
-
-	url := fmt.Sprintf("%s/api/v1/jobs/%s", s.config.ServerURL, jobID)
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	if s.config.APIKey != "" {
-		httpReq.Header.Set("X-API-Key", s.config.APIKey)
-	}
-
-	resp, err := s.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch job status: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("job not found on CI runner")
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("CI runner returned status %d: %s", resp.StatusCode, string(respBody))
-	}
-
-	var runnerResp CIRunnerJobResponse
-	if err := json.NewDecoder(resp.Body).Decode(&runnerResp); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	// Update local state
-	if err := s.UpdateJobFromRunner(ctx, jobID, &runnerResp); err != nil {
-		return nil, err
-	}
-
-	return s.jobRepo.FindByID(ctx, jobID)
+// BroadcastLogEvent broadcasts a log event to all subscribers
+func (s *CIService) BroadcastLogEvent(jobID uuid.UUID, log *CILog) {
+	s.broadcastEvent(jobID, &JobEvent{
+		Type:      "log",
+		JobID:     jobID,
+		Timestamp: log.Timestamp,
+		Data:      s.mustMarshal(log),
+	})
 }
 
-// GetLatestJobByRepository gets the latest job for a repository
-func (s *CIService) GetLatestJobByRepository(ctx context.Context, repoID uuid.UUID) (*models.CIJob, error) {
-	return s.jobRepo.GetLatestByRepository(ctx, repoID)
-}
-
-// GetLatestJobByRef gets the latest job for a specific ref
-func (s *CIService) GetLatestJobByRef(ctx context.Context, repoID uuid.UUID, refName string) (*models.CIJob, error) {
-	return s.jobRepo.GetLatestByRef(ctx, repoID, refName)
-}
-
-// CleanupOldJobs removes old job records based on retention policy
-func (s *CIService) CleanupOldJobs(ctx context.Context) (int64, error) {
-	deleted, err := s.jobRepo.DeleteOlderThan(ctx, s.config.RetentionDays)
-	if err != nil {
-		return 0, err
-	}
-
-	s.log.Info("Cleaned up old CI jobs",
-		logger.Int64("deleted_count", deleted),
-		logger.Int("retention_days", s.config.RetentionDays),
-	)
-
-	return deleted, nil
-}
-
-// GetJobArtifacts retrieves artifacts for a CI job
-func (s *CIService) GetJobArtifacts(ctx context.Context, jobID uuid.UUID) ([]*models.CIArtifact, error) {
-	return s.artifactRepo.FindByJobID(ctx, jobID)
-}
-
-// SaveArtifact saves an artifact record to the database
-func (s *CIService) SaveArtifact(ctx context.Context, artifact *models.CIArtifact) error {
-	return s.artifactRepo.Create(ctx, artifact)
-}
-
-// DownloadArtifact downloads an artifact from the CI runner
-func (s *CIService) DownloadArtifact(ctx context.Context, jobID uuid.UUID, artifactName string) ([]byte, string, error) {
-	if !s.IsEnabled() {
-		return nil, "", fmt.Errorf("CI integration is not enabled")
-	}
-
-	url := fmt.Sprintf("%s/api/v1/jobs/%s/artifacts/%s", s.config.ServerURL, jobID, artifactName)
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to create request: %w", err)
-	}
-
-	if s.config.APIKey != "" {
-		httpReq.Header.Set("X-API-Key", s.config.APIKey)
-	}
-
-	resp, err := s.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to download artifact: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, "", fmt.Errorf("artifact not found")
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, "", fmt.Errorf("CI runner returned status %d: %s", resp.StatusCode, string(body))
-	}
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to read artifact data: %w", err)
-	}
-
-	contentType := resp.Header.Get("Content-Type")
-	if contentType == "" {
-		contentType = "application/octet-stream"
-	}
-
-	return data, contentType, nil
-}
-
-// GetJobSteps retrieves steps for a CI job
-func (s *CIService) GetJobSteps(ctx context.Context, jobID uuid.UUID) ([]*models.CIJobStep, error) {
-	return s.stepRepo.FindByJobID(ctx, jobID)
+// BroadcastStatusEvent broadcasts a status update event to all subscribers
+func (s *CIService) BroadcastStatusEvent(jobID uuid.UUID, status string, startedAt, finishedAt *time.Time) {
+	s.broadcastEvent(jobID, &JobEvent{
+		Type:      "status",
+		JobID:     jobID,
+		Timestamp: time.Now(),
+		Data: s.mustMarshal(map[string]interface{}{
+			"status":      status,
+			"started_at":  startedAt,
+			"finished_at": finishedAt,
+		}),
+	})
 }
 
 // GetConfigPath returns the path to the CI config file in repositories
@@ -797,8 +793,6 @@ func (s *CIService) GetConfigPath() string {
 func (s *CIService) BuildCloneURL(owner, repoName string) string {
 	baseURL := s.config.GetGitServerURL()
 	if baseURL == "" {
-		// If git_server_url is not configured, use the CI server URL as fallback
-		// The caller should ideally configure git_server_url properly
 		baseURL = s.config.ServerURL
 	}
 	return fmt.Sprintf("%s/%s/%s.git", baseURL, owner, repoName)
@@ -810,8 +804,68 @@ func (s *CIService) buildCloneURL(repo *models.Repository) string {
 	if s.config.GitServerURL != "" {
 		return fmt.Sprintf("%s/%s/%s.git", s.config.GitServerURL, repo.Owner.Username, repo.Name)
 	}
-	// Fall back to using the clone URL from the repository
 	return fmt.Sprintf("http://localhost:8080/%s/%s.git", repo.Owner.Username, repo.Name)
+}
+
+func (s *CIService) mapRunnerResponseToJob(resp *CIRunnerJobResponse) *CIJob {
+	job := &CIJob{
+		ID:           resp.JobID,
+		RunID:        resp.RunID,
+		CommitSHA:    resp.Repository.CommitSHA,
+		RefName:      resp.Repository.RefName,
+		TriggerType:  resp.Trigger.EventType,
+		TriggerActor: resp.Trigger.Actor,
+		Status:       resp.Status,
+		Error:        resp.Error,
+	}
+
+	// Parse timestamps
+	if resp.StartedAt != nil {
+		if t, err := time.Parse(time.RFC3339, *resp.StartedAt); err == nil {
+			job.StartedAt = &t
+		}
+	}
+	if resp.FinishedAt != nil {
+		if t, err := time.Parse(time.RFC3339, *resp.FinishedAt); err == nil {
+			job.FinishedAt = &t
+		}
+	}
+
+	// Map steps
+	if resp.Result != nil {
+		for _, stepData := range resp.Result.Steps {
+			step := CIStep{
+				Name:         stepData.Name,
+				StepType:     stepData.StepType,
+				ExitCode:     stepData.ExitCode,
+				DurationSecs: stepData.DurationSecs,
+			}
+			if stepData.ExitCode == 0 {
+				step.Status = "success"
+			} else {
+				step.Status = "failed"
+			}
+			if t, err := time.Parse(time.RFC3339, stepData.StartedAt); err == nil {
+				step.StartedAt = &t
+			}
+			if t, err := time.Parse(time.RFC3339, stepData.FinishedAt); err == nil {
+				step.FinishedAt = &t
+			}
+			job.Steps = append(job.Steps, step)
+		}
+	}
+
+	// Map artifacts
+	for _, artifactData := range resp.Artifacts {
+		job.Artifacts = append(job.Artifacts, CIArtifact{
+			Name:     artifactData.Name,
+			Size:     artifactData.Size,
+			Checksum: artifactData.Checksum,
+			URL:      artifactData.URL,
+		})
+	}
+
+	return job
 }
 
 func (s *CIService) mustMarshal(v interface{}) json.RawMessage {
@@ -820,43 +874,4 @@ func (s *CIService) mustMarshal(v interface{}) json.RawMessage {
 		return json.RawMessage("{}")
 	}
 	return data
-}
-
-func mapCIRunnerStatus(status string) models.CIJobStatus {
-	switch status {
-	case "pending":
-		return models.CIJobStatusPending
-	case "queued":
-		return models.CIJobStatusQueued
-	case "running":
-		return models.CIJobStatusRunning
-	case "completed", "success":
-		return models.CIJobStatusSuccess
-	case "failed":
-		return models.CIJobStatusFailed
-	case "cancelled":
-		return models.CIJobStatusCancelled
-	case "timed_out", "timedout", "timeout":
-		return models.CIJobStatusTimedOut
-	default:
-		return models.CIJobStatusError
-	}
-}
-
-func mapStepType(stepType string) models.CIStepType {
-	switch stepType {
-	case "pre":
-		return models.CIStepTypePre
-	case "post":
-		return models.CIStepTypePost
-	default:
-		return models.CIStepTypeExec
-	}
-}
-
-func mapStepStatus(exitCode int) models.CIJobStatus {
-	if exitCode == 0 {
-		return models.CIJobStatusSuccess
-	}
-	return models.CIJobStatusFailed
 }
