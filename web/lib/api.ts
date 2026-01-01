@@ -34,6 +34,7 @@ import {
   CreateTokenRequest,
   CreateTokenResponse,
   ListTokensResponse,
+  CIArtifact,
 } from "./types";
 import { env } from "./env";
 
