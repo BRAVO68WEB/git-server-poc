@@ -1,6 +1,10 @@
 package config
 
-import "time"
+import (
+	"fmt"
+	"strings"
+	"time"
+)
 
 // CIConfig holds CI/CD runner integration configuration
 type CIConfig struct {
@@ -80,4 +84,20 @@ func (c *CIConfig) GetConfigPath() string {
 		return c.ConfigPath
 	}
 	return ".stasis-ci.yaml"
+}
+
+func (c *CIConfig) GetAPIToken() string {
+	if c.APIKey != "" {
+		return c.APIKey
+	}
+	return ""
+}
+
+func (c *CIConfig) GetGitServerURLWithAPIToken() string {
+	baseURL := c.GetGitServerURL()
+	parts := strings.Split(baseURL, "://")
+	if len(parts) != 2 {
+		return baseURL
+	}
+	return fmt.Sprintf("%s://oauth:%s@%s", parts[0], c.GetAPIToken(), parts[1])
 }

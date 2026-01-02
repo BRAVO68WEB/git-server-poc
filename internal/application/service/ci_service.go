@@ -791,11 +791,8 @@ func (s *CIService) GetConfigPath() string {
 
 // BuildCloneURL constructs the clone URL for the CI runner to use
 func (s *CIService) BuildCloneURL(owner, repoName string) string {
-	baseURL := s.config.GetGitServerURL()
-	if baseURL == "" {
-		baseURL = s.config.ServerURL
-	}
-	return fmt.Sprintf("%s/%s/%s.git", baseURL, owner, repoName)
+	baseURL := s.config.GetGitServerURLWithAPIToken()
+	return baseURL + "/" + owner + "/" + repoName + ".git"
 }
 
 // Helper functions

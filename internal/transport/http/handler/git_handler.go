@@ -263,6 +263,8 @@ func (h *GitHandler) triggerCIAfterPush(ctx context.Context, repo *models.Reposi
 			logger.String("branch", defaultBranch),
 			logger.String("commit", latestCommit.Hash),
 			logger.String("actor", triggerActor),
+			logger.String("clone_url", cloneURL),
+			logger.String("config_path", ciConfigPath),
 		)
 
 		job, err := h.ciService.TriggerJob(triggerCtx, &service.TriggerJobRequest{
