@@ -38,6 +38,11 @@ func NewRepoService(
 	}
 }
 
+// GetRepoRepository returns the underlying repository for CI integration
+func (s *RepoService) GetRepoRepository() repository.RepoRepository {
+	return s.repoRepo
+}
+
 // CreateRepository creates a new repository for a user
 func (s *RepoService) CreateRepository(ctx context.Context, ownerID uuid.UUID, name, description string, isPrivate bool) (*models.Repository, error) {
 	s.log.Info("Creating repository",

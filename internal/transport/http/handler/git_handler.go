@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	domainservice "github.com/bravo68web/stasis/internal/domain/service"
 	"github.com/bravo68web/stasis/internal/infrastructure/git"
 	"github.com/bravo68web/stasis/internal/transport/http/middleware"
+	"github.com/bravo68web/stasis/pkg/logger"
 	"github.com/gin-gonic/gin"
 )
 
@@ -20,7 +22,9 @@ type GitHandler struct {
 	repoService *service.RepoService
 	authService domainservice.AuthService
 	storage     domainservice.StorageService
+	ciService   *service.CIService
 	gitProtocol *git.GitProtocol
+	log         *logger.Logger
 }
 
 // NewGitHandler creates a new GitHandler instance
@@ -29,13 +33,16 @@ func NewGitHandler(
 	repoService *service.RepoService,
 	authService domainservice.AuthService,
 	storage domainservice.StorageService,
+	ciService *service.CIService,
 ) *GitHandler {
 	return &GitHandler{
 		gitService:  gitService,
 		repoService: repoService,
 		authService: authService,
 		storage:     storage,
+		ciService:   ciService,
 		gitProtocol: git.NewGitProtocol(),
+		log:         logger.Get().WithFields(logger.Component("git-handler")),
 	}
 }
 
@@ -190,6 +197,108 @@ func (h *GitHandler) HandleReceivePack(c *gin.Context) {
 
 	// Set default branch if not already set (first push)
 	h.repoService.SetDefaultBranchOnPush(c.Request.Context(), repo)
+
+	// Trigger CI after successful push (runs asynchronously)
+	h.triggerCIAfterPush(c.Request.Context(), repo, user, owner, repoName)
+}
+
+// triggerCIAfterPush triggers CI jobs after a successful push
+func (h *GitHandler) triggerCIAfterPush(ctx context.Context, repo *models.Repository, user *models.User, owner, repoName string) {
+	// Check if CI service is enabled
+	if h.ciService == nil || !h.ciService.IsEnabled() {
+		h.log.Debug("CI service is not enabled, skipping CI trigger",
+			logger.String("repo", fmt.Sprintf("%s/%s", owner, repoName)),
+		)
+		return
+	}
+
+	// Get the default branch (or HEAD)
+	defaultBranch, err := h.gitService.GetHEADBranch(ctx, repo.GitPath)
+	if err != nil {
+		h.log.Warn("Failed to get default branch for CI trigger",
+			logger.Error(err),
+			logger.String("repo", fmt.Sprintf("%s/%s", owner, repoName)),
+		)
+		return
+	}
+
+	// Get the latest commit on the default branch
+	commits, err := h.gitService.GetCommits(ctx, repo.GitPath, defaultBranch, 1, 0)
+	if err != nil || len(commits) == 0 {
+		h.log.Warn("Failed to get latest commit for CI trigger",
+			logger.Error(err),
+			logger.String("repo", fmt.Sprintf("%s/%s", owner, repoName)),
+			logger.String("branch", defaultBranch),
+		)
+		return
+	}
+	latestCommit := commits[0]
+
+	// Check if CI config file exists in the repository
+	ciConfigPath := h.ciService.GetConfigPath()
+	_, err = h.gitService.GetFileContent(ctx, repo.GitPath, defaultBranch, ciConfigPath)
+	if err != nil {
+		h.log.Debug("CI config file not found, skipping CI trigger",
+			logger.String("repo", fmt.Sprintf("%s/%s", owner, repoName)),
+			logger.String("config_path", ciConfigPath),
+		)
+		return
+	}
+
+	// Build the clone URL for CI runner
+	cloneURL := h.ciService.BuildCloneURL(owner, repoName)
+
+	// Determine trigger actor
+	triggerActor := "anonymous"
+	if user != nil {
+		triggerActor = user.Username
+	}
+
+	// Trigger the CI job asynchronously
+	go func() {
+		triggerCtx := context.Background()
+
+		h.log.Info("Triggering CI job after push",
+			logger.String("repo", fmt.Sprintf("%s/%s", owner, repoName)),
+			logger.String("branch", defaultBranch),
+			logger.String("commit", latestCommit.Hash),
+			logger.String("actor", triggerActor),
+			logger.String("clone_url", cloneURL),
+			logger.String("config_path", ciConfigPath),
+		)
+
+		job, err := h.ciService.TriggerJob(triggerCtx, &service.TriggerJobRequest{
+			RepositoryID: repo.ID,
+			Owner:        owner,
+			RepoName:     repoName,
+			CloneURL:     cloneURL,
+			CommitSHA:    latestCommit.Hash,
+			RefName:      defaultBranch,
+			RefType:      models.CIRefTypeBranch,
+			TriggerType:  models.CITriggerTypePush,
+			TriggerActor: triggerActor,
+			Metadata: map[string]string{
+				"commit_message": latestCommit.Message,
+				"author":         latestCommit.Author,
+				"author_email":   latestCommit.AuthorEmail,
+			},
+		})
+
+		if err != nil {
+			h.log.Error("Failed to trigger CI job after push",
+				logger.Error(err),
+				logger.String("repo", fmt.Sprintf("%s/%s", owner, repoName)),
+				logger.String("commit", latestCommit.Hash),
+			)
+			return
+		}
+
+		h.log.Info("CI job triggered successfully",
+			logger.String("job_id", job.ID.String()),
+			logger.String("repo", fmt.Sprintf("%s/%s", owner, repoName)),
+			logger.String("commit", latestCommit.Hash),
+		)
+	}()
 }
 
 // checkRepoAccess checks if the user can access the repository

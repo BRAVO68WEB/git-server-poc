@@ -109,6 +109,12 @@ export default async function RepoLayout({
             )}
           </Link>
           <Link
+            href={`/${username}/${repo}/ci`}
+            className="border-b-2 border-transparent hover:border-base text-muted pb-3 px-1 hover:text-accent"
+          >
+            CI
+          </Link>
+          <Link
             href={`/${username}/${repo}/settings`}
             className="border-b-2 border-transparent hover:border-base text-muted pb-3 px-1 hover:text-accent"
           >

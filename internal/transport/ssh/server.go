@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/ssh"
-	"github.com/charmbracelet/wish"
 	gossh "golang.org/x/crypto/ssh"
 
 	"github.com/bravo68web/stasis/internal/application/service"
@@ -17,6 +15,8 @@ import (
 	domainservice "github.com/bravo68web/stasis/internal/domain/service"
 	"github.com/bravo68web/stasis/internal/infrastructure/git"
 	"github.com/bravo68web/stasis/pkg/logger"
+	"github.com/charmbracelet/ssh"
+	"github.com/charmbracelet/wish"
 )
 
 // Server represents the SSH server for Git operations
@@ -25,6 +25,8 @@ type Server struct {
 	config      *config.SSHConfig
 	authService domainservice.AuthService
 	repoService *service.RepoService
+	ciService   *service.CIService
+	gitService  domainservice.GitService
 	gitProtocol *git.GitProtocol
 	storage     domainservice.StorageService
 	log         *logger.Logger
@@ -36,6 +38,8 @@ func NewServer(
 	storageCfg *config.StorageConfig,
 	authService domainservice.AuthService,
 	repoService *service.RepoService,
+	ciService *service.CIService,
+	gitService domainservice.GitService,
 	storage domainservice.StorageService,
 ) (*Server, error) {
 	log := logger.Get().WithFields(logger.Component("ssh-server"))
@@ -50,6 +54,8 @@ func NewServer(
 		config:      cfg,
 		authService: authService,
 		repoService: repoService,
+		ciService:   ciService,
+		gitService:  gitService,
 		gitProtocol: git.NewGitProtocol(),
 		storage:     storage,
 		log:         log,
@@ -318,6 +324,8 @@ func (s *Server) handleGitCommand(sess ssh.Session, gitCmd, repoPath string) err
 		}
 		// Set default branch if not already set (first push)
 		s.repoService.SetDefaultBranchOnPush(ctx, repo)
+		// Trigger CI after successful push
+		s.triggerCIAfterPush(ctx, repo, user, owner, repoName)
 		return nil
 	case "git-upload-archive":
 		s.log.Warn("Unsupported Git command: git-upload-archive",
@@ -336,6 +344,103 @@ func (s *Server) getUserFromSession(sess ssh.Session) *models.User {
 		return user
 	}
 	return nil
+}
+
+// triggerCIAfterPush triggers CI jobs after a successful SSH push
+func (s *Server) triggerCIAfterPush(ctx context.Context, repo *models.Repository, user *models.User, owner, repoName string) {
+	// Check if CI service is enabled
+	if s.ciService == nil || !s.ciService.IsEnabled() {
+		s.log.Debug("CI service is not enabled, skipping CI trigger",
+			logger.String("repo", fmt.Sprintf("%s/%s", owner, repoName)),
+		)
+		return
+	}
+
+	// Get the default branch (or HEAD)
+	defaultBranch, err := s.gitService.GetHEADBranch(ctx, repo.GitPath)
+	if err != nil {
+		s.log.Warn("Failed to get default branch for CI trigger",
+			logger.Error(err),
+			logger.String("repo", fmt.Sprintf("%s/%s", owner, repoName)),
+		)
+		return
+	}
+
+	// Get the latest commit on the default branch
+	commits, err := s.gitService.GetCommits(ctx, repo.GitPath, defaultBranch, 1, 0)
+	if err != nil || len(commits) == 0 {
+		s.log.Warn("Failed to get latest commit for CI trigger",
+			logger.Error(err),
+			logger.String("repo", fmt.Sprintf("%s/%s", owner, repoName)),
+			logger.String("branch", defaultBranch),
+		)
+		return
+	}
+	latestCommit := commits[0]
+
+	// Check if CI config file exists in the repository
+	ciConfigPath := s.ciService.GetConfigPath()
+	_, err = s.gitService.GetFileContent(ctx, repo.GitPath, defaultBranch, ciConfigPath)
+	if err != nil {
+		s.log.Debug("CI config file not found, skipping CI trigger",
+			logger.String("repo", fmt.Sprintf("%s/%s", owner, repoName)),
+			logger.String("config_path", ciConfigPath),
+		)
+		return
+	}
+
+	// Build the clone URL for CI runner
+	cloneURL := s.ciService.BuildCloneURL(owner, repoName)
+
+	// Determine trigger actor
+	triggerActor := "anonymous"
+	if user != nil {
+		triggerActor = user.Username
+	}
+
+	// Trigger the CI job asynchronously
+	go func() {
+		triggerCtx := context.Background()
+
+		s.log.Info("Triggering CI job after SSH push",
+			logger.String("repo", fmt.Sprintf("%s/%s", owner, repoName)),
+			logger.String("branch", defaultBranch),
+			logger.String("commit", latestCommit.Hash),
+			logger.String("actor", triggerActor),
+		)
+
+		job, err := s.ciService.TriggerJob(triggerCtx, &service.TriggerJobRequest{
+			RepositoryID: repo.ID,
+			Owner:        owner,
+			RepoName:     repoName,
+			CloneURL:     cloneURL,
+			CommitSHA:    latestCommit.Hash,
+			RefName:      defaultBranch,
+			RefType:      models.CIRefTypeBranch,
+			TriggerType:  models.CITriggerTypePush,
+			TriggerActor: triggerActor,
+			Metadata: map[string]string{
+				"commit_message": latestCommit.Message,
+				"author":         latestCommit.Author,
+				"author_email":   latestCommit.AuthorEmail,
+			},
+		})
+
+		if err != nil {
+			s.log.Error("Failed to trigger CI job after SSH push",
+				logger.Error(err),
+				logger.String("repo", fmt.Sprintf("%s/%s", owner, repoName)),
+				logger.String("commit", latestCommit.Hash),
+			)
+			return
+		}
+
+		s.log.Info("CI job triggered successfully via SSH",
+			logger.String("job_id", job.ID.String()),
+			logger.String("repo", fmt.Sprintf("%s/%s", owner, repoName)),
+			logger.String("commit", latestCommit.Hash),
+		)
+	}()
 }
 
 // checkRepoAccess checks if the user can access the repository
