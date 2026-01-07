@@ -41,4 +41,7 @@ type RepoRepository interface {
 
 	// CountByOwner returns the count of repositories owned by a user
 	CountByOwner(ctx context.Context, ownerID uuid.UUID) (int64, error)
+
+	// FindAllMirrors finds all mirror repositories
+	FindAllMirrors(ctx context.Context) ([]*models.Repository, error)
 }

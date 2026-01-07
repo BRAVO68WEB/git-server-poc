@@ -38,6 +38,44 @@ export interface CreateRepoRequest {
   is_private?: boolean;
 }
 
+export interface ImportRepoRequest {
+  name: string;
+  description?: string;
+  is_private?: boolean;
+  clone_url: string;
+  username?: string;
+  password?: string;
+  mirror?: boolean;
+}
+
+export interface UpdateMirrorSettingsRequest {
+  mirror_enabled?: boolean;
+  mirror_direction?: string;
+  upstream_url?: string;
+  upstream_username?: string;
+  upstream_password?: string;
+  downstream_url?: string;
+  downstream_username?: string;
+  downstream_password?: string;
+  sync_interval?: number;
+  sync_schedule?: string;
+}
+
+export interface MirrorSettingsResponse {
+  mirror_enabled: boolean;
+  mirror_direction?: string;
+  upstream_url?: string;
+  upstream_username?: string;
+  downstream_url?: string;
+  downstream_username?: string;
+  sync_interval: number;
+  sync_schedule?: string;
+  last_synced_at?: string;
+  next_sync_at?: string;
+  sync_status?: string;
+  sync_error?: string;
+}
+
 export interface UpdateRepoRequest {
   description?: string;
   is_private?: boolean;
@@ -53,6 +91,15 @@ export interface RepoResponse {
   clone_url: string;
   ssh_url: string;
   git_path?: string;
+  mirror_enabled: boolean;
+  mirror_direction?: string;
+  upstream_url?: string;
+  downstream_url?: string;
+  sync_interval: number;
+  sync_schedule?: string;
+  last_synced_at?: string;
+  next_sync_at?: string;
+  sync_status?: string;
   created_at: string;
   updated_at: string;
 }

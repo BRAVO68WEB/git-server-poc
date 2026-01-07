@@ -103,7 +103,21 @@ type GitService interface {
 	InitRepository(ctx context.Context, repoPath string, bare bool) error
 
 	// CloneRepository clones a repository from source to destination
-	CloneRepository(ctx context.Context, source, dest string, bare bool) error
+	// username and password are optional and used for authentication
+	// If mirror is true, creates a mirror clone (bare repository with all refs)
+	CloneRepository(ctx context.Context, source, dest, username, password string, mirror bool) error
+
+	// ConfigureMirror configures a repository as a mirror of the source
+	// This sets up the repository to fetch all refs from the source
+	ConfigureMirror(ctx context.Context, repoPath, sourceURL string) error
+
+	// FetchMirror fetches updates from the mirror source repository
+	// This performs a mirror fetch to sync all refs from the source
+	FetchMirror(ctx context.Context, repoPath, sourceURL string) error
+
+	// PushMirror pushes updates to a downstream mirror repository
+	// This performs a mirror push to sync all refs to the destination
+	PushMirror(ctx context.Context, repoPath, destURL, username, password string) error
 
 	// DeleteRepository removes a repository from the storage
 	DeleteRepository(ctx context.Context, repoPath string) error

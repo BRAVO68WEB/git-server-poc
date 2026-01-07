@@ -137,13 +137,7 @@ export default function RepositorySettingsPage() {
   }
 
   return (
-    <div className="max-w-2xl space-y-8">
-      <div>
-        <h2 className="text-xl font-semibold text-base mb-4">
-          Repository Settings
-        </h2>
-      </div>
-
+    <div className="space-y-8">
       {error && (
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 px-4 py-3 rounded-md text-sm">
           {error}

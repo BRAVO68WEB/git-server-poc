@@ -23,20 +23,40 @@ type UpdateRepoRequest struct {
 	DefaultBranch *string `json:"default_branch,omitempty"`
 }
 
+// ImportRepoRequest represents a request to import a repository from an external Git source
+type ImportRepoRequest struct {
+	Name        string `json:"name" binding:"required,min=1,max=100"`
+	Description string `json:"description" binding:"max=500"`
+	IsPrivate   bool   `json:"is_private"`
+	CloneURL    string `json:"clone_url" binding:"required,url"`
+	Username    string `json:"username,omitempty"` // Optional: for authentication
+	Password    string `json:"password,omitempty"` // Optional: for authentication (can be personal access token)
+	Mirror      bool   `json:"mirror"`             // If true, creates a mirror repository
+}
+
 // RepoResponse represents the response for repository data
 type RepoResponse struct {
-	ID            uuid.UUID `json:"id"`
-	Name          string    `json:"name"`
-	Owner         string    `json:"owner"`
-	OwnerID       uuid.UUID `json:"owner_id"`
-	IsPrivate     bool      `json:"is_private"`
-	Description   string    `json:"description"`
-	DefaultBranch string    `json:"default_branch"`
-	CloneURL      string    `json:"clone_url"`
-	SSHURL        string    `json:"ssh_url"`
-	GitPath       string    `json:"git_path,omitempty"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID              uuid.UUID  `json:"id"`
+	Name            string     `json:"name"`
+	Owner           string     `json:"owner"`
+	OwnerID         uuid.UUID  `json:"owner_id"`
+	IsPrivate       bool       `json:"is_private"`
+	Description     string     `json:"description"`
+	DefaultBranch   string     `json:"default_branch"`
+	CloneURL        string     `json:"clone_url"`
+	SSHURL          string     `json:"ssh_url"`
+	GitPath         string     `json:"git_path,omitempty"`
+	MirrorEnabled   bool       `json:"mirror_enabled"`
+	MirrorDirection string     `json:"mirror_direction,omitempty"`
+	UpstreamURL     string     `json:"upstream_url,omitempty"`
+	DownstreamURL   string     `json:"downstream_url,omitempty"`
+	SyncInterval    int        `json:"sync_interval"`
+	SyncSchedule    string     `json:"sync_schedule,omitempty"`
+	LastSyncedAt    *time.Time `json:"last_synced_at,omitempty"`
+	NextSyncAt      *time.Time `json:"next_sync_at,omitempty"`
+	SyncStatus      string     `json:"sync_status,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
 }
 
 // RepoListResponse represents a paginated list of repositories
@@ -305,15 +325,24 @@ func FileContentFromService(f *service.FileContent, ref string) FileContentRespo
 // RepoFromModel converts a Repository model to RepoResponse DTO
 func RepoFromModel(repo *models.Repository, baseURL, sshHost string, sshPort int) RepoResponse {
 	response := RepoResponse{
-		ID:            repo.ID,
-		Name:          repo.Name,
-		OwnerID:       repo.OwnerID,
-		IsPrivate:     repo.IsPrivate,
-		Description:   repo.Description,
-		DefaultBranch: repo.DefaultBranch,
-		GitPath:       repo.GitPath,
-		CreatedAt:     repo.CreatedAt,
-		UpdatedAt:     repo.UpdatedAt,
+		ID:              repo.ID,
+		Name:            repo.Name,
+		OwnerID:         repo.OwnerID,
+		IsPrivate:       repo.IsPrivate,
+		Description:     repo.Description,
+		DefaultBranch:   repo.DefaultBranch,
+		GitPath:         repo.GitPath,
+		MirrorEnabled:   repo.MirrorEnabled,
+		MirrorDirection: repo.MirrorDirection,
+		UpstreamURL:     repo.UpstreamURL,
+		DownstreamURL:   repo.DownstreamURL,
+		SyncInterval:    repo.SyncInterval,
+		SyncSchedule:    repo.SyncSchedule,
+		LastSyncedAt:    repo.LastSyncedAt,
+		NextSyncAt:      repo.GetNextSyncTime(),
+		SyncStatus:      repo.SyncStatus,
+		CreatedAt:       repo.CreatedAt,
+		UpdatedAt:       repo.UpdatedAt,
 	}
 
 	// Set owner username if available
@@ -387,6 +416,23 @@ func (r *CreateRepoRequest) Validate() error {
 	return nil
 }
 
+// Validate validates the ImportRepoRequest
+func (r *ImportRepoRequest) Validate() error {
+	if r.Name == "" {
+		return ErrNameRequired
+	}
+	if len(r.Name) > 100 {
+		return ErrNameTooLong
+	}
+	if !isValidRepoName(r.Name) {
+		return ErrInvalidRepoName
+	}
+	if r.CloneURL == "" {
+		return ErrCloneURLRequired
+	}
+	return nil
+}
+
 // isValidRepoName checks if a repository name is valid
 func isValidRepoName(name string) bool {
 	if name == "" || name == "." || name == ".." {
@@ -408,11 +454,42 @@ func isValidRepoNameChar(c rune) bool {
 		c == '-' || c == '_' || c == '.'
 }
 
+// UpdateMirrorSettingsRequest represents a request to update mirror settings
+type UpdateMirrorSettingsRequest struct {
+	MirrorEnabled      *bool   `json:"mirror_enabled,omitempty"`
+	MirrorDirection    *string `json:"mirror_direction,omitempty"` // "upstream", "downstream", "both"
+	UpstreamURL        *string `json:"upstream_url,omitempty"`
+	UpstreamUsername   *string `json:"upstream_username,omitempty"`
+	UpstreamPassword   *string `json:"upstream_password,omitempty"`
+	DownstreamURL      *string `json:"downstream_url,omitempty"`
+	DownstreamUsername *string `json:"downstream_username,omitempty"`
+	DownstreamPassword *string `json:"downstream_password,omitempty"`
+	SyncInterval       *int    `json:"sync_interval,omitempty"` // in seconds (deprecated, use SyncSchedule)
+	SyncSchedule       *string `json:"sync_schedule,omitempty"` // cron expression (e.g., "0 */1 * * *")
+}
+
+// MirrorSettingsResponse represents the mirror settings of a repository
+type MirrorSettingsResponse struct {
+	MirrorEnabled      bool       `json:"mirror_enabled"`
+	MirrorDirection    string     `json:"mirror_direction,omitempty"`
+	UpstreamURL        string     `json:"upstream_url,omitempty"`
+	UpstreamUsername   string     `json:"upstream_username,omitempty"`
+	DownstreamURL      string     `json:"downstream_url,omitempty"`
+	DownstreamUsername string     `json:"downstream_username,omitempty"`
+	SyncInterval       int        `json:"sync_interval"`
+	SyncSchedule       string     `json:"sync_schedule,omitempty"`
+	LastSyncedAt       *time.Time `json:"last_synced_at,omitempty"`
+	NextSyncAt         *time.Time `json:"next_sync_at,omitempty"`
+	SyncStatus         string     `json:"sync_status,omitempty"`
+	SyncError          string     `json:"sync_error,omitempty"`
+}
+
 // Common validation errors
 var (
-	ErrNameRequired    = &ValidationError{Field: "name", Message: "name is required"}
-	ErrNameTooLong     = &ValidationError{Field: "name", Message: "name must be 100 characters or less"}
-	ErrInvalidRepoName = &ValidationError{Field: "name", Message: "name contains invalid characters"}
+	ErrNameRequired     = &ValidationError{Field: "name", Message: "name is required"}
+	ErrNameTooLong      = &ValidationError{Field: "name", Message: "name must be 100 characters or less"}
+	ErrInvalidRepoName  = &ValidationError{Field: "name", Message: "name contains invalid characters"}
+	ErrCloneURLRequired = &ValidationError{Field: "clone_url", Message: "clone URL is required"}
 )
 
 // ValidationError represents a validation error

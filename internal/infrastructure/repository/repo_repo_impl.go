@@ -246,3 +246,17 @@ func (r *RepoRepoImpl) UpdateDescription(ctx context.Context, id uuid.UUID, desc
 	}
 	return nil
 }
+
+// FindAllMirrors finds all mirror repositories
+func (r *RepoRepoImpl) FindAllMirrors(ctx context.Context) ([]*models.Repository, error) {
+	var repos []*models.Repository
+	err := r.db.WithContext(ctx).
+		Preload("Owner").
+		Where("mirror_enabled = ?", true).
+		Order("created_at DESC").
+		Find(&repos).Error
+	if err != nil {
+		return nil, apperror.DatabaseError("find", err)
+	}
+	return repos, nil
+}

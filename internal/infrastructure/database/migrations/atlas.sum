@@ -1,5 +1,8 @@
-h1:Xu4gzyJm9eV0jbJo0ehncSkCVjXgc0B9DKzwZHHHs90=
+h1:HbV6tDtDmYc/GrpBVLFuB7iuaw/b6l3Ra7evuTwodos=
 20251220201834.sql h1:fCXlQfArkrgZwk9Gsz2hG+S9YkAeqd5hPcbYmOgadvo=
 20251222221807_feat_add_repo_default_branch.sql h1:U4+GE4e2LA567cS10QWXAqFojqAzQuaBNIetC0Y/3X4=
 20260101195758_feat_ci.sql h1:Z2PBCifxZuBG1gyzkan95fQ6tD4Q+q5ENGyK8Dih6QU=
 20260101221129_remove_ci_models.sql h1:sXCP9swSIPg6k+Ku6pZpTcZe3oe+vMCryFYcdDzQSQY=
+20260107205703_repo-mirror.sql h1:C9cua2Zr9SsAjNrM6u6n2JhE06ZT19YD/hl2YPz5Syo=
+20260107212516_up_downstream_mirror.sql h1:H4U0KH5e6Z6pVrpTKs5kv34WW/3LqNf0mhHJ2Yp9yDc=
+20260108031658_add_sync_schedule.sql h1:7xXQMsUfv16v07+nq3dcrnll3qoVX/ntrwjXQQERK00=

@@ -107,3 +107,7 @@ logging:
     # headers:
     #   Authorization: "Bearer your-token"
     #   X-Custom-Header: "value"
+
+mirror:
+  enabled: true      # Enable automatic syncing
+  sync_interval: 1h  # Sync every hour (configurable: 30m, 2h, etc.)

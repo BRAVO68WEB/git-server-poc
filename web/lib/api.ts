@@ -5,7 +5,10 @@ import {
   OIDCCallbackResponse,
   OIDCLogoutResponse,
   CreateRepoRequest,
+  ImportRepoRequest,
   UpdateRepoRequest,
+  UpdateMirrorSettingsRequest,
+  MirrorSettingsResponse,
   RepoResponse,
   RepoListResponse,
   PublicRepoListResponse,
@@ -264,7 +267,9 @@ export async function getCurrentUser(): Promise<UserInfo> {
 /**
  * Update current user's username
  */
-export async function updateUsername(username: string): Promise<UpdateUserResponse> {
+export async function updateUsername(
+  username: string,
+): Promise<UpdateUserResponse> {
   return apiRequest<UpdateUserResponse>("/v1/users/username", {
     method: "PUT",
     body: JSON.stringify({ username }),
@@ -396,6 +401,15 @@ export async function createRepository(
   });
 }
 
+export async function importRepository(
+  data: ImportRepoRequest,
+): Promise<RepoResponse> {
+  return apiRequest("/v1/repos/import", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
 export async function listPublicRepositories(
   page: number = 1,
   perPage: number = 20,
@@ -448,6 +462,50 @@ export async function getRepositoryStats(
 ): Promise<RepoStats> {
   return apiRequest(
     `/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/stats`,
+  );
+}
+
+export async function getMirrorSettings(
+  owner: string,
+  repo: string,
+): Promise<MirrorSettingsResponse> {
+  return apiRequest(
+    `/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/mirror`,
+  );
+}
+
+export async function updateMirrorSettings(
+  owner: string,
+  repo: string,
+  data: UpdateMirrorSettingsRequest,
+): Promise<RepoResponse> {
+  return apiRequest(
+    `/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/mirror`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    },
+  );
+}
+
+export async function syncMirrorRepository(
+  owner: string,
+  repo: string,
+): Promise<{ message: string; status: string }> {
+  return apiRequest(
+    `/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/sync`,
+    {
+      method: "POST",
+    },
+  );
+}
+
+export async function getMirrorStatus(
+  owner: string,
+  repo: string,
+): Promise<MirrorSettingsResponse> {
+  return apiRequest(
+    `/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/mirror/status`,
   );
 }
 
