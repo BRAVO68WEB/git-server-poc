@@ -1,7 +1,7 @@
 services:
   nginx:
     image: nginx:alpine
-    container_name: githut-nginx
+    container_name: stasis-nginx
     ports:
       - "80:80"
       - "443:443"
@@ -19,7 +19,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.api
-    container_name: githut-api
+    container_name: stasis-api
     expose:
       - "8080"
     # healthcheck:
@@ -32,9 +32,9 @@ services:
       - CONFIG_PATH=/app/configs/config.yaml
       - GITSERVER_DATABASE_HOST=postgres
       - GITSERVER_DATABASE_PORT=5432
-      - GITSERVER_DATABASE_USER=githut
-      - GITSERVER_DB_PASSWORD=githut
-      - GITSERVER_DATABASE_DBNAME=githut
+      - GITSERVER_DATABASE_USER=stasis
+      - GITSERVER_DB_PASSWORD=stasis
+      - GITSERVER_DATABASE_DBNAME=stasis
       - GITSERVER_DATABASE_SSLMODE=disable
       - GITSERVER_SERVER_HOST=0.0.0.0
       - GITSERVER_SERVER_PORT=8080
@@ -76,7 +76,7 @@ services:
         - NEXT_PUBLIC_API_URL=http://localhost/api
         - STASIS_SERVER_HOSTED_URL=http://localhost
         - STASIS_SSH_HOST_NAME=localhost:2222
-    container_name: githut-web
+    container_name: stasis-web
     expose:
       - "3000"
     environment:
@@ -90,21 +90,21 @@ services:
     develop:
       watch:
         - action: rebuild
-          path: ./web/**/*.{ts,tsx,js,jsx,json}
+          path: ./web
 
   postgres:
     image: postgres:17-alpine
-    container_name: githut-postgres
+    container_name: stasis-postgres
     environment:
-      POSTGRES_USER: githut
-      POSTGRES_PASSWORD: githut
-      POSTGRES_DB: githut
+      POSTGRES_USER: stasis
+      POSTGRES_PASSWORD: stasis
+      POSTGRES_DB: stasis
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     # healthcheck:
-    #   test: ["CMD-SHELL", "pg_isready -U githut"]
+    #   test: ["CMD-SHELL", "pg_isready -U stasis"]
     #   interval: 5s
     #   timeout: 5s
     #   retries: 5
@@ -116,6 +116,6 @@ volumes:
   nginx_certs:
 
 networks:
-  githut-network:
+  stasis-network:
     driver: bridge
-    name: githut-network
+    name: stasis-network

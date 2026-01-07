@@ -49,6 +49,7 @@ func (r *Router) RegisterRoutes() {
 	r.sshKeyRouter()
 	r.tokenRouter()
 	r.ciRouter()
+	r.userRouter()
 }
 
 func (r *Router) setupHTTPLoggerAndRecovery() {

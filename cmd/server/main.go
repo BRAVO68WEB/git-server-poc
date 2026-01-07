@@ -32,6 +32,12 @@ func main() {
 	r := router.NewRouter(s)
 	r.RegisterRoutes()
 
+	if err := s.OpenAPIGenerator.Generate().SaveToFile("docs/openapi.yaml"); err != nil {
+		log.Error("Failed to write OpenAPI schema",
+			logger.Error(err),
+		)
+	}
+
 	log.Info("Routes registered successfully")
 
 	// Create a channel for shutdown signals
@@ -45,7 +51,7 @@ func main() {
 			logger.String("address", addr),
 			logger.String("mode", s.Config.Server.Mode),
 		)
-		if err := s.Run(addr); err != nil {
+		if err := s.Engine.Run(addr); err != nil {
 			log.Error("HTTP server error",
 				logger.Error(err),
 				logger.String("address", addr),

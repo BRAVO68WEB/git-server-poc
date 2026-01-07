@@ -3,13 +3,6 @@ SERVER_MAIN_PKG := ./cmd/server/main.go
 CLI_BINARY_NAME := stasis-cli
 SERVER_BINARY_NAME := stasis-server
 
-
-## caddy-dev: run the caddy server
-.PHONY: caddy-dev
-caddy-dev:
-	@command -v caddy >/dev/null 2>&1 || (echo "caddy is not installed" && exit 1)
-	@caddy run --config deploy/Caddyfile
-
 ## web: run the web development server
 .PHONY: web
 web:
@@ -19,7 +12,7 @@ web:
 .PHONY: dev
 dev:
 	@echo "Running in development environment..."
-	@make watch-server watch-cli web 
+	@make watch-server web 
 
 ## update: updates the packages and tidy the modfile
 .PHONY: update

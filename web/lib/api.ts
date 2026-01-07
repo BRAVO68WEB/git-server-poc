@@ -1,5 +1,6 @@
 import {
   UserInfo,
+  UpdateUserResponse,
   OIDCConfigResponse,
   OIDCCallbackResponse,
   OIDCLogoutResponse,
@@ -109,7 +110,7 @@ function removeToken(): void {
 }
 
 // User info helpers using cookies
-function getUserInfo(): UserInfo | null {
+export function getUserInfo(): UserInfo | null {
   const userInfoStr = getCookie(USER_COOKIE_NAME);
   if (!userInfoStr) return null;
   try {
@@ -119,11 +120,11 @@ function getUserInfo(): UserInfo | null {
   }
 }
 
-function setUserInfo(user: UserInfo): void {
+export function setUserInfo(user: UserInfo): void {
   setCookie(USER_COOKIE_NAME, JSON.stringify(user), 7);
 }
 
-function removeUserInfo(): void {
+export function removeUserInfo(): void {
   deleteCookie(USER_COOKIE_NAME);
 }
 
@@ -258,6 +259,16 @@ export function storeUserInfo(user: UserInfo): void {
  */
 export async function getCurrentUser(): Promise<UserInfo> {
   return apiRequest("/v1/auth/me");
+}
+
+/**
+ * Update current user's username
+ */
+export async function updateUsername(username: string): Promise<UpdateUserResponse> {
+  return apiRequest<UpdateUserResponse>("/v1/users/username", {
+    method: "PUT",
+    body: JSON.stringify({ username }),
+  });
 }
 
 /**
@@ -715,6 +726,24 @@ export async function getDiff(
     credentials: "include",
   });
   if (!res.ok) throw new Error("Failed to fetch diff");
+  return res.json();
+}
+
+export async function getCompareDiff(
+  owner: string,
+  name: string,
+  from: string,
+  to: string,
+): Promise<Diff> {
+  const headers = await getLegacyAuthHeaders();
+  const range = `${encodeURIComponent(from)}..${encodeURIComponent(to)}`;
+  const url = `${getApiUrl()}/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/compare/${range}`;
+  const res = await fetch(url, {
+    cache: "no-store",
+    headers,
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error("Failed to fetch compare diff");
   return res.json();
 }
 

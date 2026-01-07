@@ -18,7 +18,6 @@ export default function RepositorySettingsPage() {
   const repo = params.repo as string;
 
   const [repoData, setRepoData] = useState<RepoResponse | null>(null);
-  const [stats, setStats] = useState<RepoStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -36,13 +35,11 @@ export default function RepositorySettingsPage() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const [repoResponse, statsResponse] = await Promise.all([
+        const [repoResponse] = await Promise.all([
           getRepository(username, repo),
-          getRepositoryStats(username, repo).catch(() => null),
         ]);
 
         setRepoData(repoResponse);
-        setStats(statsResponse);
         setFormData({
           description: repoResponse.description || "",
           is_private: repoResponse.is_private,
@@ -156,33 +153,6 @@ export default function RepositorySettingsPage() {
       {success && (
         <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-600 dark:text-green-400 px-4 py-3 rounded-md text-sm">
           {success}
-        </div>
-      )}
-
-      {/* Repository Info */}
-      {stats && (
-        <div className="border border-base rounded-md bg-panel p-4">
-          <h3 className="font-medium text-base mb-3">Repository Statistics</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-            <div>
-              <span className="text-muted">Commits</span>
-              <p className="font-semibold text-base">{stats.commits}</p>
-            </div>
-            <div>
-              <span className="text-muted">Branches</span>
-              <p className="font-semibold text-base">{stats.branches}</p>
-            </div>
-            <div>
-              <span className="text-muted">Tags</span>
-              <p className="font-semibold text-base">{stats.tags}</p>
-            </div>
-            <div>
-              <span className="text-muted">Size</span>
-              <p className="font-semibold text-base">
-                {formatBytes(stats.size_bytes)}
-              </p>
-            </div>
-          </div>
         </div>
       )}
 

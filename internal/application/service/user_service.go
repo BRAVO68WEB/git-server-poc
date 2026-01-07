@@ -41,8 +41,9 @@ type CreateUserRequest struct {
 
 // UpdateUserRequest represents a request to update a user
 type UpdateUserRequest struct {
-	Email   *string
-	IsAdmin *bool
+	Email    *string
+	Username *string
+	IsAdmin  *bool
 }
 
 // CreateUser creates a new user (typically from OIDC flow)
@@ -227,6 +228,37 @@ func (s *UserService) UpdateUser(ctx context.Context, id uuid.UUID, req UpdateUs
 			logger.Bool("is_admin", *req.IsAdmin),
 		)
 		user.IsAdmin = *req.IsAdmin
+	}
+
+	// Update username if provided
+	if req.Username != nil {
+		if err := s.validateUsername(*req.Username); err != nil {
+			s.log.Warn("Username validation failed during update",
+				logger.Error(err),
+				logger.String("username", *req.Username),
+			)
+			return nil, err
+		}
+
+		// Check if username is already taken
+		exists, err := s.userRepo.ExistsByUsername(ctx, *req.Username)
+		if err != nil {
+			s.log.Error("Failed to check username existence during update",
+				logger.Error(err),
+			)
+			return nil, fmt.Errorf("failed to check username: %w", err)
+		}
+		if exists {
+			s.log.Warn("Username already registered by another user",
+				logger.String("username", *req.Username),
+			)
+			return nil, apperrors.Conflict("username already registered", apperrors.ErrUserExists)
+		}
+		user.Username = *req.Username
+		s.log.Debug("Updating user username",
+			logger.String("user_id", id.String()),
+			logger.String("new_username", *req.Username),
+		)
 	}
 
 	// Save updates

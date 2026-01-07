@@ -5,6 +5,11 @@ import { usePathname } from "next/navigation";
 
 const settingsNav = [
   {
+    name: "General",
+    href: "/settings/general",
+    description: "Manage general account settings",
+  },
+  {
     name: "SSH Keys",
     href: "/settings/ssh-keys",
     description: "Manage SSH keys for Git access",

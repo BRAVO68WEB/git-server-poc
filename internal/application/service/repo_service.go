@@ -3,6 +3,9 @@ package service
 import (
 	"context"
 	"fmt"
+	"math"
+	"path/filepath"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -438,18 +441,196 @@ func (s *RepoService) GetRepositoryStats(ctx context.Context, repo *models.Repos
 		diskUsage = 0
 	}
 
+	// Calculate total commit count
+	var totalCommits int
+	for _, branch := range branches {
+		totalCommits += branch.CommitCount
+	}
+
+	// Language Usage Percentage
+	languageUsagePerc := s.calculateLanguageUsagePercentage(ctx, repo)
+
 	return &RepositoryStats{
-		BranchCount: len(branches),
-		TagCount:    len(tags),
-		DiskUsage:   diskUsage,
+		BranchCount:       len(branches),
+		TagCount:          len(tags),
+		DiskUsage:         diskUsage,
+		TotalCommits:      totalCommits,
+		LanguageUsagePerc: languageUsagePerc,
 	}, nil
+}
+
+var extensionToLanguage = map[string]string{
+	".go":         "Go",
+	".js":         "JavaScript",
+	".ts":         "TypeScript",
+	".tsx":        "TypeScript",
+	".jsx":        "JavaScript",
+	".py":         "Python",
+	".java":       "Java",
+	".c":          "C",
+	".cpp":        "C++",
+	".h":          "C/C++",
+	".cs":         "C#",
+	".rb":         "Ruby",
+	".php":        "PHP",
+	".html":       "HTML",
+	".css":        "CSS",
+	".scss":       "CSS",
+	".json":       "JSON",
+	".xml":        "XML",
+	".yaml":       "YAML",
+	".yml":        "YAML",
+	".md":         "Markdown",
+	".sql":        "SQL",
+	".sh":         "Shell",
+	".bash":       "Shell",
+	".rs":         "Rust",
+	".swift":      "Swift",
+	".kt":         "Kotlin",
+	".dart":       "Dart",
+	".lua":        "Lua",
+	".dockerfile": "Dockerfile",
+}
+
+var ignoredDirs = map[string]struct{}{
+	"vendor":       {},
+	"node_modules": {},
+	".git":         {},
+	".github":      {},
+	"dist":         {},
+	"build":        {},
+	"out":          {},
+	"coverage":     {},
+}
+
+var ignoredFileExts = map[string]struct{}{
+	".png":   {},
+	".jpg":   {},
+	".jpeg":  {},
+	".gif":   {},
+	".svg":   {},
+	".ico":   {},
+	".pdf":   {},
+	".zip":   {},
+	".tar":   {},
+	".gz":    {},
+	".rar":   {},
+	".7z":    {},
+	".woff":  {},
+	".woff2": {},
+	".ttf":   {},
+	".eot":   {},
+	".mp3":   {},
+	".mp4":   {},
+	".mov":   {},
+	".avi":   {},
+	".bin":   {},
+	".exe":   {},
+	".dll":   {},
+	".so":    {},
+	".dylib": {},
+}
+
+var ignoredFilenames = map[string]struct{}{
+	"package-lock.json": {},
+	"yarn.lock":         {},
+	"pnpm-lock.yaml":    {},
+	"Cargo.lock":        {},
+}
+
+func (s *RepoService) calculateLanguageUsagePercentage(ctx context.Context, repo *models.Repository) map[string]float64 {
+	refHash, err := s.gitService.GetHEADRef(ctx, repo.GitPath)
+	if err != nil {
+		return map[string]float64{}
+	}
+	ref := refHash
+	if ref == "" {
+		if branch, _ := s.gitService.GetHEADBranch(ctx, repo.GitPath); branch != "" {
+			ref = branch
+		} else {
+			if branches, _ := s.gitService.ListBranches(ctx, repo.GitPath); len(branches) > 0 {
+				ref = branches[0].Name
+			} else {
+				return map[string]float64{}
+			}
+		}
+	}
+
+	langSizes := make(map[string]int64)
+	var totalSize int64
+
+	var walk func(path string) error
+	walk = func(path string) error {
+		entries, err := s.gitService.GetTree(ctx, repo.GitPath, ref, path)
+		if err != nil {
+			return err
+		}
+
+		for _, entry := range entries {
+			if entry.Type == "blob" {
+				if entry.Mode == "120000" {
+					continue
+				}
+
+				ext := strings.ToLower(filepath.Ext(entry.Name))
+				if strings.EqualFold(entry.Name, "Dockerfile") {
+					ext = ".dockerfile"
+				}
+				if _, ok := ignoredFileExts[ext]; ok {
+					continue
+				}
+				if _, ok := ignoredFilenames[entry.Name]; ok {
+					continue
+				}
+
+				if lang, ok := extensionToLanguage[ext]; ok {
+					langSizes[lang] += entry.Size
+					totalSize += entry.Size
+				} else {
+					langSizes["Other"] += entry.Size
+					totalSize += entry.Size
+				}
+			} else if entry.Type == "tree" {
+				if _, ok := ignoredDirs[entry.Name]; ok {
+					continue
+				}
+				if err := walk(entry.Path); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+
+	if err := walk(""); err != nil {
+		s.log.Error("Failed to walk tree for stats",
+			logger.String("repo_path", repo.GitPath),
+			logger.Error(err),
+		)
+		return map[string]float64{}
+	}
+
+	// Calculate percentages
+	percentages := make(map[string]float64)
+	if totalSize == 0 {
+		return percentages
+	}
+
+	for lang, size := range langSizes {
+		v := (float64(size) / float64(totalSize)) * 100
+		percentages[lang] = math.Round(v*100) / 100
+	}
+
+	return percentages
 }
 
 // RepositoryStats holds statistics for a repository
 type RepositoryStats struct {
-	BranchCount int   `json:"branch_count"`
-	TagCount    int   `json:"tag_count"`
-	DiskUsage   int64 `json:"disk_usage"`
+	BranchCount       int                `json:"branch_count"`
+	TagCount          int                `json:"tag_count"`
+	DiskUsage         int64              `json:"disk_usage"`
+	TotalCommits      int                `json:"total_commits"`
+	LanguageUsagePerc map[string]float64 `json:"language_usage_perc"`
 }
 
 // TransferRepository transfers a repository to a new owner
@@ -581,6 +762,11 @@ func (s *RepoService) GetBlame(ctx context.Context, repo *models.Repository, ref
 // GetDiff returns the diff (patch) for a specific commit in a repository
 func (s *RepoService) GetDiff(ctx context.Context, repo *models.Repository, commitHash string) (*service.DiffResult, error) {
 	return s.gitService.GetDiff(ctx, repo.GitPath, commitHash)
+}
+
+// GetCompareDiff returns the diff between two commits
+func (s *RepoService) GetCompareDiff(ctx context.Context, repo *models.Repository, from, to string) (*service.DiffResult, error) {
+	return s.gitService.GetCompareDiff(ctx, repo.GitPath, from, to)
 }
 
 // ForkRepository creates a fork of a repository

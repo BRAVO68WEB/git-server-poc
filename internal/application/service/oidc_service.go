@@ -274,7 +274,7 @@ func (s *OIDCService) GenerateSessionToken(user *models.User) (string, error) {
 	now := time.Now()
 	claims := SessionClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    "githut",
+			Issuer:    "stasis",
 			Subject:   user.ID.String(),
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(24 * time.Hour)), // 24 hour expiry

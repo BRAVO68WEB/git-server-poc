@@ -33,7 +33,7 @@ export default function BranchSelector({ branches }: { branches: Branch[] }) {
   };
 
   return (
-    <div className="relative inline-block text-left mr-4">
+    <div className="relative inline-block text-left">
       <select 
         value={decodeURIComponent(currentRef)}
         onChange={handleChange}

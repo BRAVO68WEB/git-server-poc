@@ -6,6 +6,14 @@ export interface UserInfo {
   is_admin: boolean;
 }
 
+export interface UpdateUserRequest {
+  username: string;
+}
+
+export interface UpdateUserResponse {
+  user: UserInfo;
+}
+
 // OIDC types
 export interface OIDCConfigResponse {
   oidc_enabled: boolean;
@@ -67,6 +75,11 @@ export interface RepoStats {
   tags: number;
   contributors: number;
   size_bytes: number;
+  branch_count?: number;
+  tag_count?: number;
+  total_commits?: number;
+  disk_usage?: number;
+  language_usage_perc?: Record<string, number>;
 }
 
 // Branch types

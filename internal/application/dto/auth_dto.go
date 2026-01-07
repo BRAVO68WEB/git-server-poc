@@ -144,3 +144,8 @@ type ValidateTokenResponse struct {
 	User  *UserInfo  `json:"user,omitempty"`
 	Token *TokenInfo `json:"token,omitempty"`
 }
+
+// UpdateUserRequest represents a request to update user information
+type UpdateUserRequest struct {
+	Username *string `json:"username,omitempty" binding:"omitempty,min=1,max=255"`
+}
