@@ -1,8 +1,10 @@
 package router
 
 import (
+	"github.com/bravo68web/stasis/internal/application/dto"
 	"github.com/bravo68web/stasis/internal/transport/http/handler"
 	"github.com/bravo68web/stasis/internal/transport/http/middleware"
+	"github.com/bravo68web/stasis/pkg/openapi"
 )
 
 func (r *Router) repoRouter() {
@@ -18,6 +20,379 @@ func (r *Router) repoRouter() {
 		r.server.Config.SSH.Host,
 		r.server.Config.SSH.Port,
 	)
+
+	// Register OpenAPI Docs
+	r.server.OpenAPIGenerator.RegisterDocs("GET", "/api/v1/repos/public", openapi.RouteDocs{
+		Summary:     "List public repositories",
+		Description: "Get a list of public repositories with pagination",
+		Tags:        []string{"Repositories"},
+		Responses: map[int]openapi.ResponseDoc{
+			200: {
+				Description: "Successful response",
+				Model:       dto.RepoListResponse{},
+			},
+		},
+	})
+
+	r.server.OpenAPIGenerator.RegisterDocs("POST", "/api/v1/repos", openapi.RouteDocs{
+		Summary:     "Create repository",
+		Description: "Create a new repository for the authenticated user",
+		Tags:        []string{"Repositories"},
+		RequestBody: dto.CreateRepoRequest{},
+		Responses: map[int]openapi.ResponseDoc{
+			201: {
+				Description: "Repository created successfully",
+				Model:       dto.RepoResponse{},
+			},
+			400: {
+				Description: "Invalid request",
+			},
+			401: {
+				Description: "Unauthorized",
+			},
+		},
+	})
+
+	r.server.OpenAPIGenerator.RegisterDocs("GET", "/api/v1/repos", openapi.RouteDocs{
+		Summary:     "List user repositories",
+		Description: "Get a list of repositories for the authenticated user",
+		Tags:        []string{"Repositories"},
+		Responses: map[int]openapi.ResponseDoc{
+			200: {
+				Description: "Successful response",
+				Model:       dto.RepoListResponse{},
+			},
+			401: {
+				Description: "Unauthorized",
+			},
+		},
+	})
+
+	r.server.OpenAPIGenerator.RegisterDocs("GET", "/api/v1/repos/:owner/:repo", openapi.RouteDocs{
+		Summary:     "Get repository",
+		Description: "Get detailed information about a specific repository",
+		Tags:        []string{"Repositories"},
+		Responses: map[int]openapi.ResponseDoc{
+			200: {
+				Description: "Successful response",
+				Model:       dto.RepoResponse{},
+			},
+			404: {
+				Description: "Repository not found",
+			},
+		},
+	})
+
+	r.server.OpenAPIGenerator.RegisterDocs("PATCH", "/api/v1/repos/:owner/:repo", openapi.RouteDocs{
+		Summary:     "Update repository",
+		Description: "Update repository details",
+		Tags:        []string{"Repositories"},
+		RequestBody: dto.UpdateRepoRequest{},
+		Responses: map[int]openapi.ResponseDoc{
+			200: {
+				Description: "Repository updated successfully",
+				Model:       dto.RepoResponse{},
+			},
+			401: {
+				Description: "Unauthorized",
+			},
+			404: {
+				Description: "Repository not found",
+			},
+		},
+	})
+
+	r.server.OpenAPIGenerator.RegisterDocs("DELETE", "/api/v1/repos/:owner/:repo", openapi.RouteDocs{
+		Summary:     "Delete repository",
+		Description: "Delete a repository permanently",
+		Tags:        []string{"Repositories"},
+		Responses: map[int]openapi.ResponseDoc{
+			200: {
+				Description: "Repository deleted successfully",
+			},
+			401: {
+				Description: "Unauthorized",
+			},
+			404: {
+				Description: "Repository not found",
+			},
+		},
+	})
+
+	r.server.OpenAPIGenerator.RegisterDocs("GET", "/api/v1/repos/:owner/:repo/stats", openapi.RouteDocs{
+		Summary:     "Get repository stats",
+		Description: "Get statistics for a repository",
+		Tags:        []string{"Repositories"},
+		Responses: map[int]openapi.ResponseDoc{
+			200: {
+				Description: "Successful response",
+				Model:       dto.RepoStatsResponse{},
+			},
+			401: {
+				Description: "Unauthorized",
+			},
+			404: {
+				Description: "Repository not found",
+			},
+		},
+	})
+
+	r.server.OpenAPIGenerator.RegisterDocs("GET", "/api/v1/repos/:owner/:repo/branches", openapi.RouteDocs{
+		Summary:     "List branches",
+		Description: "List all branches in the repository",
+		Tags:        []string{"Branches"},
+		Responses: map[int]openapi.ResponseDoc{
+			200: {
+				Description: "Successful response",
+				Model:       dto.BranchListResponse{},
+			},
+			401: {
+				Description: "Unauthorized",
+			},
+			404: {
+				Description: "Repository not found",
+			},
+		},
+	})
+
+	r.server.OpenAPIGenerator.RegisterDocs("POST", "/api/v1/repos/:owner/:repo/branches", openapi.RouteDocs{
+		Summary:     "Create branch",
+		Description: "Create a new branch",
+		Tags:        []string{"Branches"},
+		RequestBody: dto.BranchRequest{},
+		Responses: map[int]openapi.ResponseDoc{
+			201: {
+				Description: "Branch created successfully",
+				Model:       dto.BranchResponse{},
+			},
+			400: {
+				Description: "Invalid request",
+			},
+			401: {
+				Description: "Unauthorized",
+			},
+			404: {
+				Description: "Repository not found",
+			},
+		},
+	})
+
+	r.server.OpenAPIGenerator.RegisterDocs("DELETE", "/api/v1/repos/:owner/:repo/branches/:branch", openapi.RouteDocs{
+		Summary:     "Delete branch",
+		Description: "Delete a branch",
+		Tags:        []string{"Branches"},
+		Responses: map[int]openapi.ResponseDoc{
+			200: {
+				Description: "Branch deleted successfully",
+			},
+			401: {
+				Description: "Unauthorized",
+			},
+			404: {
+				Description: "Repository not found",
+			},
+		},
+	})
+
+	r.server.OpenAPIGenerator.RegisterDocs("GET", "/api/v1/repos/:owner/:repo/tags", openapi.RouteDocs{
+		Summary:     "List tags",
+		Description: "List all tags in the repository",
+		Tags:        []string{"Tags"},
+		Responses: map[int]openapi.ResponseDoc{
+			200: {
+				Description: "Successful response",
+				Model:       dto.TagListResponse{},
+			},
+			401: {
+				Description: "Unauthorized",
+			},
+			404: {
+				Description: "Repository not found",
+			},
+		},
+	})
+
+	r.server.OpenAPIGenerator.RegisterDocs("POST", "/api/v1/repos/:owner/:repo/tags", openapi.RouteDocs{
+		Summary:     "Create tag",
+		Description: "Create a new tag",
+		Tags:        []string{"Tags"},
+		RequestBody: dto.TagRequest{},
+		Responses: map[int]openapi.ResponseDoc{
+			201: {
+				Description: "Tag created successfully",
+				Model:       dto.TagResponse{},
+			},
+			400: {
+				Description: "Invalid request",
+			},
+			401: {
+				Description: "Unauthorized",
+			},
+			404: {
+				Description: "Repository not found",
+			},
+		},
+	})
+
+	r.server.OpenAPIGenerator.RegisterDocs("DELETE", "/api/v1/repos/:owner/:repo/tags/:tag", openapi.RouteDocs{
+		Summary:     "Delete tag",
+		Description: "Delete a tag",
+		Tags:        []string{"Tags"},
+		Responses: map[int]openapi.ResponseDoc{
+			200: {
+				Description: "Tag deleted successfully",
+			},
+			401: {
+				Description: "Unauthorized",
+			},
+			404: {
+				Description: "Repository not found",
+			},
+		},
+	})
+
+	r.server.OpenAPIGenerator.RegisterDocs("GET", "/api/v1/repos/:owner/:repo/commits", openapi.RouteDocs{
+		Summary:     "List commits",
+		Description: "List commits in the repository",
+		Tags:        []string{"Commits"},
+		Responses: map[int]openapi.ResponseDoc{
+			200: {
+				Description: "Successful response",
+				Model:       dto.CommitListResponse{},
+			},
+			401: {
+				Description: "Unauthorized",
+			},
+			404: {
+				Description: "Repository not found",
+			},
+		},
+	})
+
+	r.server.OpenAPIGenerator.RegisterDocs("GET", "/api/v1/repos/:owner/:repo/commits/:sha", openapi.RouteDocs{
+		Summary:     "Get commit",
+		Description: "Get details of a specific commit",
+		Tags:        []string{"Commits"},
+		Responses: map[int]openapi.ResponseDoc{
+			200: {
+				Description: "Successful response",
+				Model:       dto.CommitResponse{},
+			},
+			401: {
+				Description: "Unauthorized",
+			},
+			404: {
+				Description: "Repository or commit not found",
+			},
+		},
+	})
+
+	r.server.OpenAPIGenerator.RegisterDocs("GET", "/api/v1/repos/:owner/:repo/diff/:hash", openapi.RouteDocs{
+		Summary:     "Get diff",
+		Description: "Get diff for a commit",
+		Tags:        []string{"Commits"},
+		Responses: map[int]openapi.ResponseDoc{
+			200: {
+				Description: "Successful response",
+				Model:       dto.DiffResponse{},
+			},
+			401: {
+				Description: "Unauthorized",
+			},
+			404: {
+				Description: "Repository or commit not found",
+			},
+		},
+	})
+	r.server.OpenAPIGenerator.RegisterDocs("GET", "/api/v1/repos/:owner/:repo/compare/:range", openapi.RouteDocs{
+		Summary:     "Compare diff",
+		Description: "Compare changes between two commits",
+		Tags:        []string{"Commits"},
+		Responses: map[int]openapi.ResponseDoc{
+			200: {
+				Description: "Successful response",
+				Model:       dto.DiffResponse{},
+			},
+			401: {
+				Description: "Unauthorized",
+			},
+			404: {
+				Description: "Repository or commit not found",
+			},
+		},
+	})
+
+	r.server.OpenAPIGenerator.RegisterDocs("GET", "/api/v1/repos/:owner/:repo/tree/:ref", openapi.RouteDocs{
+		Summary:     "Get tree",
+		Description: "Get file tree for a reference",
+		Tags:        []string{"Code"},
+		Responses: map[int]openapi.ResponseDoc{
+			200: {
+				Description: "Successful response",
+				Model:       dto.TreeResponse{},
+			},
+			401: {
+				Description: "Unauthorized",
+			},
+			404: {
+				Description: "Repository or ref not found",
+			},
+		},
+	})
+
+	r.server.OpenAPIGenerator.RegisterDocs("GET", "/api/v1/repos/:owner/:repo/tree/:ref/*path", openapi.RouteDocs{
+		Summary:     "Get tree with path",
+		Description: "Get file tree for a reference and path",
+		Tags:        []string{"Code"},
+		Responses: map[int]openapi.ResponseDoc{
+			200: {
+				Description: "Successful response",
+				Model:       dto.TreeResponse{},
+			},
+			401: {
+				Description: "Unauthorized",
+			},
+			404: {
+				Description: "Repository or ref not found",
+			},
+		},
+	})
+
+	r.server.OpenAPIGenerator.RegisterDocs("GET", "/api/v1/repos/:owner/:repo/blob/:ref/*path", openapi.RouteDocs{
+		Summary:     "Get file content",
+		Description: "Get content of a specific file",
+		Tags:        []string{"Code"},
+		Responses: map[int]openapi.ResponseDoc{
+			200: {
+				Description: "Successful response",
+				Model:       dto.FileContentResponse{},
+			},
+			401: {
+				Description: "Unauthorized",
+			},
+			404: {
+				Description: "Repository or file not found",
+			},
+		},
+	})
+
+	r.server.OpenAPIGenerator.RegisterDocs("GET", "/api/v1/repos/:owner/:repo/blame/:ref/*path", openapi.RouteDocs{
+		Summary:     "Get blame",
+		Description: "Get blame information for a file",
+		Tags:        []string{"Code"},
+		Responses: map[int]openapi.ResponseDoc{
+			200: {
+				Description: "Successful response",
+				Model:       dto.BlameResponse{},
+			},
+			401: {
+				Description: "Unauthorized",
+			},
+			404: {
+				Description: "Repository or file not found",
+			},
+		},
+	})
 
 	// Repository routes
 	repos := v1.Group("/repos")
@@ -51,6 +426,7 @@ func (r *Router) repoRouter() {
 			repoRoutes.GET("/commits", authMiddleware.Authenticate(), h.ListCommits)
 			repoRoutes.GET("/commits/:sha", authMiddleware.Authenticate(), h.GetCommit)
 			repoRoutes.GET("/diff/:hash", authMiddleware.Authenticate(), h.GetDiff)
+			repoRoutes.GET("/compare/:range", authMiddleware.Authenticate(), h.GetCompareDiff)
 
 			// Tree/code structure routes
 			repoRoutes.GET("/tree/:ref", authMiddleware.Authenticate(), h.GetTree)

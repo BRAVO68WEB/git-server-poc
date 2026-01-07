@@ -6,6 +6,14 @@ export interface UserInfo {
   is_admin: boolean;
 }
 
+export interface UpdateUserRequest {
+  username: string;
+}
+
+export interface UpdateUserResponse {
+  user: UserInfo;
+}
+
 // OIDC types
 export interface OIDCConfigResponse {
   oidc_enabled: boolean;
@@ -67,6 +75,11 @@ export interface RepoStats {
   tags: number;
   contributors: number;
   size_bytes: number;
+  branch_count?: number;
+  tag_count?: number;
+  total_commits?: number;
+  disk_usage?: number;
+  language_usage_perc?: Record<string, number>;
 }
 
 // Branch types
@@ -269,4 +282,112 @@ export interface CreateTokenResponse {
 export interface ListTokensResponse {
   tokens: TokenInfo[];
   total: number;
+}
+
+// CI/CD Types
+export type CIJobStatus =
+  | "pending"
+  | "queued"
+  | "running"
+  | "success"
+  | "failed"
+  | "cancelled"
+  | "timed_out"
+  | "error";
+
+export type CITriggerType = "push" | "tag" | "pull_request" | "manual";
+
+export type CIRefType = "branch" | "tag";
+
+export type CIStepType = "pre" | "exec" | "post";
+
+export type CILogLevel = "debug" | "info" | "warning" | "error";
+
+export interface CIJob {
+  id: string;
+  run_id: string;
+  repository_id: string;
+  commit_sha: string;
+  ref_name: string;
+  ref_type: CIRefType;
+  trigger_type: CITriggerType;
+  trigger_actor: string;
+  status: CIJobStatus;
+  config_path: string;
+  error?: string;
+  created_at: string;
+  started_at?: string;
+  finished_at?: string;
+  duration_seconds?: number;
+  steps?: CIJobStep[];
+  artifacts?: CIArtifact[];
+}
+
+export interface CIJobStep {
+  id: string;
+  name: string;
+  step_type: CIStepType;
+  status: CIJobStatus;
+  exit_code?: number;
+  order: number;
+  started_at?: string;
+  finished_at?: string;
+  duration_seconds?: number;
+}
+
+export interface CIJobLog {
+  timestamp: string;
+  level: CILogLevel;
+  step_name?: string;
+  message: string;
+  sequence: number;
+}
+
+export interface CIArtifact {
+  id: string;
+  name: string;
+  path: string;
+  size: number;
+  checksum: string;
+  url?: string;
+  created_at: string;
+  expires_at?: string;
+}
+
+export interface CIJobListResponse {
+  jobs: CIJob[];
+  total: number;
+  pagination: {
+    limit: number;
+    offset: number;
+  };
+}
+
+export interface CIJobLogsResponse {
+  job_id: string;
+  logs: CIJobLog[];
+  total: number;
+  pagination: {
+    limit: number;
+    offset: number;
+  };
+}
+
+export interface TriggerCIJobRequest {
+  commit_sha: string;
+  ref_name: string;
+  ref_type: "branch" | "tag";
+}
+
+export interface TriggerCIJobResponse {
+  message: string;
+  job_id: string;
+  run_id: string;
+  status: CIJobStatus;
+}
+
+export interface CIJobEvent {
+  type: "connected" | "status" | "log" | "step" | "artifact";
+  job_id: string;
+  data: CIJobLog | CIJob | unknown;
 }

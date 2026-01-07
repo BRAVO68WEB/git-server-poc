@@ -366,6 +366,13 @@ func buildSSHURL(host string, port int, owner, name string) string {
 	return "ssh://git@" + host + ":" + string(rune(port)) + "/" + owner + "/" + name + ".git"
 }
 
+// RepoStatsResponse represents repository statistics
+type RepoStatsResponse struct {
+	BranchCount int   `json:"branch_count"`
+	TagCount    int   `json:"tag_count"`
+	DiskUsage   int64 `json:"disk_usage"`
+}
+
 // Validate validates the CreateRepoRequest
 func (r *CreateRepoRequest) Validate() error {
 	if r.Name == "" {

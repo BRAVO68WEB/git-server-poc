@@ -262,9 +262,10 @@ func (g *GitOperations) ListBranches(ctx context.Context, repoPath string) ([]se
 
 	err = refIter.ForEach(func(ref *plumbing.Reference) error {
 		branches = append(branches, service.Branch{
-			Name:   ref.Name().Short(),
-			Hash:   ref.Hash().String(),
-			IsHead: ref.Name().Short() == headName,
+			Name:        ref.Name().Short(),
+			Hash:        ref.Hash().String(),
+			IsHead:      ref.Name().Short() == headName,
+			CommitCount: g.CountCommits(ctx, repoPath, ref.Name().Short()),
 		})
 		return nil
 	})
@@ -273,6 +274,29 @@ func (g *GitOperations) ListBranches(ctx context.Context, repoPath string) ([]se
 	}
 
 	return branches, nil
+}
+
+func (g *GitOperations) CountCommits(ctx context.Context, repoPath string, branchName string) int {
+	repo, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return 0
+	}
+
+	commits, err := repo.CommitObjects()
+	if err != nil {
+		return 0
+	}
+
+	var commitCount int
+	err = commits.ForEach(func(commit *object.Commit) error {
+		commitCount++
+		return nil
+	})
+	if err != nil {
+		return 0
+	}
+
+	return int(commitCount)
 }
 
 // GetBranch returns information about a specific branch
@@ -1157,6 +1181,89 @@ func (g *GitOperations) GetDiff(ctx context.Context, repoPath, commitHash string
 
 	return &service.DiffResult{
 		CommitHash:   commitHash,
+		Content:      content,
+		FilesChanged: filesChanged,
+		Additions:    additions,
+		Deletions:    deletions,
+		Files:        files,
+	}, nil
+}
+
+// GetCompareDiff returns the diff between two commits
+func (g *GitOperations) GetCompareDiff(ctx context.Context, repoPath, from, to string) (*service.DiffResult, error) {
+	cmd := exec.CommandContext(ctx, "git", "-C", repoPath, "diff", "--format=", "-p", from+".."+to)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("failed to get compare diff %s..%s: %w (stderr: %s)", from, to, err, stderr.String())
+	}
+	content := stdout.String()
+
+	statsCmd := exec.CommandContext(ctx, "git", "-C", repoPath, "diff", "--format=", "--stat", "--numstat", from+".."+to)
+	var statsStdout, statsStderr bytes.Buffer
+	statsCmd.Stdout = &statsStdout
+	statsCmd.Stderr = &statsStderr
+
+	var filesChanged, additions, deletions int
+	var files []service.DiffFile
+
+	if err := statsCmd.Run(); err == nil {
+		lines := strings.Split(statsStdout.String(), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			parts := strings.Split(line, "\t")
+			if len(parts) >= 3 {
+				add, _ := strconv.Atoi(parts[0])
+				del, _ := strconv.Atoi(parts[1])
+				filePath := parts[2]
+				additions += add
+				deletions += del
+				filesChanged++
+				status := "modified"
+				oldPath := filePath
+				newPath := filePath
+				if strings.Contains(filePath, " => ") {
+					status = "renamed"
+					renameParts := strings.Split(filePath, " => ")
+					if len(renameParts) == 2 {
+						oldPath = strings.TrimSpace(renameParts[0])
+						newPath = strings.TrimSpace(renameParts[1])
+					}
+				}
+				files = append(files, service.DiffFile{
+					OldPath:   oldPath,
+					NewPath:   newPath,
+					Status:    status,
+					Additions: add,
+					Deletions: del,
+				})
+			}
+		}
+	}
+
+	if filesChanged == 0 && content != "" {
+		diffLines := strings.Split(content, "\n")
+		for _, line := range diffLines {
+			if strings.HasPrefix(line, "diff --git") {
+				filesChanged++
+			} else if strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++") {
+				additions++
+			} else if strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "---") {
+				deletions++
+			}
+		}
+	}
+
+	if len(files) > 0 && content != "" {
+		files = g.parseFilePatchesFromDiff(content, files)
+	}
+
+	return &service.DiffResult{
+		CommitHash:   from + ".." + to,
 		Content:      content,
 		FilesChanged: filesChanged,
 		Additions:    additions,

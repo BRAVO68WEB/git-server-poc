@@ -1,0 +1,2510 @@
+openapi: 3.0.3
+info:
+  title: Stasis - Git Server API
+  description: A self-hosted Git server API that provides repository management, authentication, SSH key management, and Git Smart HTTP protocol support.
+  version: 1.0.0
+  contact:
+    name: Bravo68Web
+  license:
+    name: MIT
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+tags:
+  - name: Health
+    description: Health check endpoints
+  - name: Authentication
+    description: User authentication and registration
+  - name: SSH Keys
+    description: SSH key management for Git SSH access
+  - name: Repositories
+    description: Repository management operations
+  - name: Branches
+    description: Branch management operations
+  - name: Tags
+    description: Tag management operations
+  - name: Commits
+    description: Commit history and details
+  - name: Code
+    description: File tree, content, and blame information
+  - name: Git Protocol
+    description: Git Smart HTTP protocol endpoints
+paths:
+  /:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Returns the health status of the API
+      operationId: router_Router_healthRouter_HealthHandler_func1
+      responses:
+        "200":
+          description: API is healthy
+  /{owner}/{repo}/HEAD:
+    get:
+      tags:
+        - Git Protocol
+      summary: Git HEAD
+      description: Get repository HEAD
+      operationId: handler_GitHandler_HandleGetHEAD
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: HEAD content
+        "401":
+          description: Authentication required
+  /{owner}/{repo}/git-receive-pack:
+    post:
+      tags:
+        - Git Protocol
+      summary: Git receive-pack
+      description: Handles git push operations
+      operationId: handler_GitHandler_HandleReceivePack
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Push status
+        "401":
+          description: Authentication required
+  /{owner}/{repo}/git-upload-pack:
+    post:
+      tags:
+        - Git Protocol
+      summary: Git upload-pack
+      description: Handles git fetch/clone operations
+      operationId: handler_GitHandler_HandleUploadPack
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Pack data
+        "401":
+          description: Authentication required
+  /{owner}/{repo}/info/refs:
+    get:
+      tags:
+        - Git Protocol
+      summary: Git info/refs
+      description: Advertises capabilities and refs for git-discovery
+      operationId: handler_GitHandler_HandleInfoRefs
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Git references advertisement
+        "401":
+          description: Authentication required
+  /{owner}/{repo}/objects/{dir}/{file}:
+    get:
+      tags:
+        - Git Protocol
+      summary: Get loose object
+      description: Download a loose object
+      operationId: handler_GitHandler_HandleGetObject
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: dir
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: file
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Object content
+        "401":
+          description: Authentication required
+  /{owner}/{repo}/objects/info/alternates:
+    get:
+      tags:
+        - Git Protocol
+      summary: Get alternates info
+      description: Discover alternate object stores
+      operationId: handler_GitHandler_HandleGetInfoPacks
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Alternates info content
+        "401":
+          description: Authentication required
+  /{owner}/{repo}/objects/info/packs:
+    get:
+      tags:
+        - Git Protocol
+      summary: Get packs info
+      description: Discover available packs
+      operationId: handler_GitHandler_HandleGetInfoPacks
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Packs info content
+        "401":
+          description: Authentication required
+  /{owner}/{repo}/objects/pack/{packfile}:
+    get:
+      tags:
+        - Git Protocol
+      summary: Get pack file
+      description: Download a pack file
+      operationId: handler_GitHandler_HandleGetObject
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: packfile
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Pack file content
+        "401":
+          description: Authentication required
+  /{owner}/{repo}/refs/heads/{branch}:
+    get:
+      tags:
+        - Git Protocol
+      summary: Get branch ref
+      description: Get specific branch reference
+      operationId: handler_GitHandler_HandleGetRefs
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: branch
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Branch reference content
+        "401":
+          description: Authentication required
+  /{owner}/{repo}/refs/tags/{tag}:
+    get:
+      tags:
+        - Git Protocol
+      summary: Get tag ref
+      description: Get specific tag reference
+      operationId: handler_GitHandler_HandleGetRefs
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: tag
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Tag reference content
+        "401":
+          description: Authentication required
+  /api/v1/auth/me:
+    get:
+      tags:
+        - Authentication
+      summary: Get current user
+      description: Get information about the currently authenticated user
+      operationId: handler_AuthHandler_GetCurrentUser
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  email:
+                    type: string
+                  id:
+                    type: string
+                    format: uuid
+                  is_admin:
+                    type: boolean
+                  username:
+                    type: string
+        "401":
+          description: Unauthorized
+  /api/v1/auth/oidc/callback:
+    get:
+      tags:
+        - Authentication
+      summary: OIDC Callback
+      description: Handle the callback from the identity provider
+      operationId: handler_AuthHandler_OIDCCallback
+      responses:
+        "200":
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  token:
+                    type: string
+                  user:
+                    type: object
+                    properties:
+                      email:
+                        type: string
+                      id:
+                        type: string
+                        format: uuid
+                      is_admin:
+                        type: boolean
+                      username:
+                        type: string
+        "401":
+          description: Authentication failed
+  /api/v1/auth/oidc/config:
+    get:
+      tags:
+        - Authentication
+      summary: Get OIDC configuration
+      description: Get the current OIDC configuration status
+      operationId: handler_AuthHandler_GetOIDCConfig
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  oidc_enabled:
+                    type: boolean
+                  oidc_initialized:
+                    type: boolean
+  /api/v1/auth/oidc/login:
+    get:
+      tags:
+        - Authentication
+      summary: Initiate OIDC login
+      description: Initiates the OIDC login flow by redirecting to the identity provider
+      operationId: handler_AuthHandler_OIDCLogin
+      responses:
+        "302":
+          description: Redirect to Identity Provider
+  /api/v1/auth/oidc/logout:
+    post:
+      tags:
+        - Authentication
+      summary: Logout
+      description: Invalidate the current session
+      operationId: handler_AuthHandler_OIDCLogout
+      responses:
+        "200":
+          description: Logged out successfully
+  /api/v1/ci/jobs/{job_id}/complete:
+    post:
+      tags:
+        - CI Internal
+      summary: Complete job
+      description: Mark job as complete
+      operationId: handler_CIHandler_CompleteJob
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                error:
+                  type: string
+                finished_at:
+                  type: string
+                started_at:
+                  type: string
+                status:
+                  type: string
+        required: true
+      responses:
+        "200":
+          description: Job completed
+        "400":
+          description: Invalid request
+  /api/v1/ci/jobs/{job_id}/logs:
+    post:
+      tags:
+        - CI Internal
+      summary: Receive logs
+      description: Receive logs from CI runner
+      operationId: handler_CIHandler_ReceiveLogs
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                properties:
+                  level:
+                    type: string
+                  message:
+                    type: string
+                  sequence:
+                    type: integer
+                  step_name:
+                    type: string
+                  timestamp:
+                    type: string
+                    format: date-time
+        required: true
+      responses:
+        "200":
+          description: Logs received
+        "400":
+          description: Invalid request
+  /api/v1/ci/webhook/job-update:
+    post:
+      tags:
+        - CI Internal
+      summary: Job update webhook
+      description: Receive generic job updates
+      operationId: handler_CIHandler_WebhookJobUpdate
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                event:
+                  type: string
+                job_id:
+                  type: string
+                  format: uuid
+                status:
+                  type: string
+        required: true
+      responses:
+        "200":
+          description: Update received
+        "400":
+          description: Invalid request
+  /api/v1/repos:
+    get:
+      tags:
+        - Repositories
+      summary: List user repositories
+      description: Get a list of repositories for the authenticated user
+      operationId: handler_RepoHandler_ListRepositories
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  page:
+                    type: integer
+                  per_page:
+                    type: integer
+                  repositories:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        clone_url:
+                          type: string
+                        created_at:
+                          type: string
+                          format: date-time
+                        default_branch:
+                          type: string
+                        description:
+                          type: string
+                        git_path:
+                          type: string
+                        id:
+                          type: string
+                          format: uuid
+                        is_private:
+                          type: boolean
+                        name:
+                          type: string
+                        owner:
+                          type: string
+                        owner_id:
+                          type: string
+                          format: uuid
+                        ssh_url:
+                          type: string
+                        updated_at:
+                          type: string
+                          format: date-time
+                  total:
+                    type: integer
+                  total_pages:
+                    type: integer
+        "401":
+          description: Unauthorized
+    post:
+      tags:
+        - Repositories
+      summary: Create repository
+      description: Create a new repository for the authenticated user
+      operationId: handler_RepoHandler_CreateRepository
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                description:
+                  type: string
+                is_private:
+                  type: boolean
+                name:
+                  type: string
+        required: true
+      responses:
+        "201":
+          description: Repository created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  clone_url:
+                    type: string
+                  created_at:
+                    type: string
+                    format: date-time
+                  default_branch:
+                    type: string
+                  description:
+                    type: string
+                  git_path:
+                    type: string
+                  id:
+                    type: string
+                    format: uuid
+                  is_private:
+                    type: boolean
+                  name:
+                    type: string
+                  owner:
+                    type: string
+                  owner_id:
+                    type: string
+                    format: uuid
+                  ssh_url:
+                    type: string
+                  updated_at:
+                    type: string
+                    format: date-time
+        "400":
+          description: Invalid request
+        "401":
+          description: Unauthorized
+  /api/v1/repos/{owner}/{repo}:
+    get:
+      tags:
+        - Repositories
+      summary: Get repository
+      description: Get detailed information about a specific repository
+      operationId: handler_RepoHandler_GetRepository
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  clone_url:
+                    type: string
+                  created_at:
+                    type: string
+                    format: date-time
+                  default_branch:
+                    type: string
+                  description:
+                    type: string
+                  git_path:
+                    type: string
+                  id:
+                    type: string
+                    format: uuid
+                  is_private:
+                    type: boolean
+                  name:
+                    type: string
+                  owner:
+                    type: string
+                  owner_id:
+                    type: string
+                    format: uuid
+                  ssh_url:
+                    type: string
+                  updated_at:
+                    type: string
+                    format: date-time
+        "404":
+          description: Repository not found
+    delete:
+      tags:
+        - Repositories
+      summary: Delete repository
+      description: Delete a repository permanently
+      operationId: handler_RepoHandler_DeleteRepository
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Repository deleted successfully
+        "401":
+          description: Unauthorized
+        "404":
+          description: Repository not found
+    patch:
+      tags:
+        - Repositories
+      summary: Update repository
+      description: Update repository details
+      operationId: handler_RepoHandler_UpdateRepository
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                default_branch:
+                  type: string
+                description:
+                  type: string
+                is_private:
+                  type: boolean
+        required: true
+      responses:
+        "200":
+          description: Repository updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  clone_url:
+                    type: string
+                  created_at:
+                    type: string
+                    format: date-time
+                  default_branch:
+                    type: string
+                  description:
+                    type: string
+                  git_path:
+                    type: string
+                  id:
+                    type: string
+                    format: uuid
+                  is_private:
+                    type: boolean
+                  name:
+                    type: string
+                  owner:
+                    type: string
+                  owner_id:
+                    type: string
+                    format: uuid
+                  ssh_url:
+                    type: string
+                  updated_at:
+                    type: string
+                    format: date-time
+        "401":
+          description: Unauthorized
+        "404":
+          description: Repository not found
+  /api/v1/repos/{owner}/{repo}/blame/{ref}/{path}:
+    get:
+      tags:
+        - Code
+      summary: Get blame
+      description: Get blame information for a file
+      operationId: handler_RepoHandler_GetBlame
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: ref
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: path
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  blame:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        author:
+                          type: string
+                        commit:
+                          type: string
+                        content:
+                          type: string
+                        date:
+                          type: string
+                        email:
+                          type: string
+                        line_no:
+                          type: integer
+                  path:
+                    type: string
+                  ref:
+                    type: string
+                  total:
+                    type: integer
+        "401":
+          description: Unauthorized
+        "404":
+          description: Repository or file not found
+  /api/v1/repos/{owner}/{repo}/blob/{ref}/{path}:
+    get:
+      tags:
+        - Code
+      summary: Get file content
+      description: Get content of a specific file
+      operationId: handler_RepoHandler_GetFileContent
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: ref
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: path
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  content:
+                    type: string
+                  encoding:
+                    type: string
+                  hash:
+                    type: string
+                  is_binary:
+                    type: boolean
+                  name:
+                    type: string
+                  path:
+                    type: string
+                  ref:
+                    type: string
+                  size:
+                    type: integer
+        "401":
+          description: Unauthorized
+        "404":
+          description: Repository or file not found
+  /api/v1/repos/{owner}/{repo}/branches:
+    get:
+      tags:
+        - Branches
+      summary: List branches
+      description: List all branches in the repository
+      operationId: handler_RepoHandler_ListBranches
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  branches:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        hash:
+                          type: string
+                        is_head:
+                          type: boolean
+                        name:
+                          type: string
+                  total:
+                    type: integer
+        "401":
+          description: Unauthorized
+        "404":
+          description: Repository not found
+    post:
+      tags:
+        - Branches
+      summary: Create branch
+      description: Create a new branch
+      operationId: handler_RepoHandler_CreateBranch
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                commit_hash:
+                  type: string
+                name:
+                  type: string
+        required: true
+      responses:
+        "201":
+          description: Branch created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hash:
+                    type: string
+                  is_head:
+                    type: boolean
+                  name:
+                    type: string
+        "400":
+          description: Invalid request
+        "401":
+          description: Unauthorized
+        "404":
+          description: Repository not found
+  /api/v1/repos/{owner}/{repo}/branches/{branch}:
+    delete:
+      tags:
+        - Branches
+      summary: Delete branch
+      description: Delete a branch
+      operationId: handler_RepoHandler_DeleteBranch
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: branch
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Branch deleted successfully
+        "401":
+          description: Unauthorized
+        "404":
+          description: Repository not found
+  /api/v1/repos/{owner}/{repo}/ci/jobs:
+    get:
+      tags:
+        - CI
+      summary: List jobs
+      description: List CI jobs for a repository
+      operationId: handler_CIHandler_ListJobs
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        artifacts:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              checksum:
+                                type: string
+                              name:
+                                type: string
+                              size:
+                                type: integer
+                              url:
+                                type: string
+                        commit_sha:
+                          type: string
+                        config_path:
+                          type: string
+                        created_at:
+                          type: string
+                          format: date-time
+                        duration_seconds:
+                          type: number
+                        error:
+                          type: string
+                        finished_at:
+                          type: string
+                          format: date-time
+                        id:
+                          type: string
+                          format: uuid
+                        ref_name:
+                          type: string
+                        ref_type:
+                          type: string
+                        repository_id:
+                          type: string
+                          format: uuid
+                        run_id:
+                          type: string
+                        started_at:
+                          type: string
+                          format: date-time
+                        status:
+                          type: string
+                        steps:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              duration_secs:
+                                type: number
+                              exit_code:
+                                type: integer
+                              finished_at:
+                                type: string
+                                format: date-time
+                              name:
+                                type: string
+                              started_at:
+                                type: string
+                                format: date-time
+                              status:
+                                type: string
+                              step_type:
+                                type: string
+                        trigger_actor:
+                          type: string
+                        trigger_type:
+                          type: string
+                  pagination:
+                    type: object
+                    properties:
+                      limit:
+                        type: integer
+                      offset:
+                        type: integer
+                  total:
+                    type: integer
+        "401":
+          description: Unauthorized
+        "404":
+          description: Repository not found
+    post:
+      tags:
+        - CI
+      summary: Trigger job
+      description: Trigger a new CI job
+      operationId: handler_CIHandler_TriggerJob
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                commit_sha:
+                  type: string
+                ref_name:
+                  type: string
+                ref_type:
+                  type: string
+        required: true
+      responses:
+        "202":
+          description: Job triggered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id:
+                    type: string
+                    format: uuid
+                  message:
+                    type: string
+                  run_id:
+                    type: string
+                  status:
+                    type: string
+        "400":
+          description: Invalid request
+        "401":
+          description: Unauthorized
+        "404":
+          description: Repository not found
+  /api/v1/repos/{owner}/{repo}/ci/jobs/{job_id}:
+    get:
+      tags:
+        - CI
+      summary: Get job
+      description: Get details of a specific CI job
+      operationId: handler_CIHandler_GetJob
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  artifacts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        checksum:
+                          type: string
+                        name:
+                          type: string
+                        size:
+                          type: integer
+                        url:
+                          type: string
+                  commit_sha:
+                    type: string
+                  config_path:
+                    type: string
+                  created_at:
+                    type: string
+                    format: date-time
+                  duration_seconds:
+                    type: number
+                  error:
+                    type: string
+                  finished_at:
+                    type: string
+                    format: date-time
+                  id:
+                    type: string
+                    format: uuid
+                  ref_name:
+                    type: string
+                  ref_type:
+                    type: string
+                  repository_id:
+                    type: string
+                    format: uuid
+                  run_id:
+                    type: string
+                  started_at:
+                    type: string
+                    format: date-time
+                  status:
+                    type: string
+                  steps:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        duration_secs:
+                          type: number
+                        exit_code:
+                          type: integer
+                        finished_at:
+                          type: string
+                          format: date-time
+                        name:
+                          type: string
+                        started_at:
+                          type: string
+                          format: date-time
+                        status:
+                          type: string
+                        step_type:
+                          type: string
+                  trigger_actor:
+                    type: string
+                  trigger_type:
+                    type: string
+        "401":
+          description: Unauthorized
+        "404":
+          description: Repository or job not found
+  /api/v1/repos/{owner}/{repo}/ci/jobs/{job_id}/artifacts:
+    get:
+      tags:
+        - CI
+      summary: List artifacts
+      description: List artifacts for a CI job
+      operationId: handler_CIHandler_ListArtifacts
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  artifacts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        checksum:
+                          type: string
+                        name:
+                          type: string
+                        size:
+                          type: integer
+                        url:
+                          type: string
+                  total:
+                    type: integer
+        "401":
+          description: Unauthorized
+        "404":
+          description: Repository or job not found
+  /api/v1/repos/{owner}/{repo}/ci/jobs/{job_id}/artifacts/{artifact_name}:
+    get:
+      tags:
+        - CI
+      summary: Download artifact
+      description: Download a specific artifact
+      operationId: handler_CIHandler_DownloadArtifact
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: artifact_name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful download
+        "401":
+          description: Unauthorized
+        "404":
+          description: Repository, job or artifact not found
+  /api/v1/repos/{owner}/{repo}/ci/jobs/{job_id}/cancel:
+    post:
+      tags:
+        - CI
+      summary: Cancel job
+      description: Cancel a running CI job
+      operationId: handler_CIHandler_CancelJob
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Job cancelled successfully
+        "401":
+          description: Unauthorized
+        "404":
+          description: Repository or job not found
+  /api/v1/repos/{owner}/{repo}/ci/jobs/{job_id}/logs:
+    get:
+      tags:
+        - CI
+      summary: Get job logs
+      description: Get logs for a specific CI job
+      operationId: handler_CIHandler_GetJobLogs
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id:
+                    type: string
+                    format: uuid
+                  logs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        level:
+                          type: string
+                        message:
+                          type: string
+                        sequence:
+                          type: integer
+                        step_name:
+                          type: string
+                        timestamp:
+                          type: string
+                          format: date-time
+                  pagination:
+                    type: object
+                    properties:
+                      limit:
+                        type: integer
+                      offset:
+                        type: integer
+                  total:
+                    type: integer
+        "401":
+          description: Unauthorized
+        "404":
+          description: Repository or job not found
+  /api/v1/repos/{owner}/{repo}/ci/jobs/{job_id}/retry:
+    post:
+      tags:
+        - CI
+      summary: Retry job
+      description: Retry a failed CI job
+      operationId: handler_CIHandler_RetryJob
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "202":
+          description: Job retry initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id:
+                    type: string
+                    format: uuid
+                  message:
+                    type: string
+                  run_id:
+                    type: string
+                  status:
+                    type: string
+        "401":
+          description: Unauthorized
+        "404":
+          description: Repository or job not found
+  /api/v1/repos/{owner}/{repo}/ci/jobs/{job_id}/stream:
+    get:
+      tags:
+        - CI
+      summary: Stream logs
+      description: Stream logs for a CI job via SSE
+      operationId: handler_CIHandler_StreamLogs
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful stream
+        "401":
+          description: Unauthorized
+        "404":
+          description: Repository or job not found
+  /api/v1/repos/{owner}/{repo}/ci/latest:
+    get:
+      tags:
+        - CI
+      summary: Get latest job
+      description: Get the latest CI job for a repository
+      operationId: handler_CIHandler_GetLatestJob
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  artifacts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        checksum:
+                          type: string
+                        name:
+                          type: string
+                        size:
+                          type: integer
+                        url:
+                          type: string
+                  commit_sha:
+                    type: string
+                  config_path:
+                    type: string
+                  created_at:
+                    type: string
+                    format: date-time
+                  duration_seconds:
+                    type: number
+                  error:
+                    type: string
+                  finished_at:
+                    type: string
+                    format: date-time
+                  id:
+                    type: string
+                    format: uuid
+                  ref_name:
+                    type: string
+                  ref_type:
+                    type: string
+                  repository_id:
+                    type: string
+                    format: uuid
+                  run_id:
+                    type: string
+                  started_at:
+                    type: string
+                    format: date-time
+                  status:
+                    type: string
+                  steps:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        duration_secs:
+                          type: number
+                        exit_code:
+                          type: integer
+                        finished_at:
+                          type: string
+                          format: date-time
+                        name:
+                          type: string
+                        started_at:
+                          type: string
+                          format: date-time
+                        status:
+                          type: string
+                        step_type:
+                          type: string
+                  trigger_actor:
+                    type: string
+                  trigger_type:
+                    type: string
+        "401":
+          description: Unauthorized
+        "404":
+          description: Repository or job not found
+  /api/v1/repos/{owner}/{repo}/commits:
+    get:
+      tags:
+        - Commits
+      summary: List commits
+      description: List commits in the repository
+      operationId: handler_RepoHandler_ListCommits
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  commits:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        author:
+                          type: string
+                        author_date:
+                          type: string
+                          format: date-time
+                        author_email:
+                          type: string
+                        committer:
+                          type: string
+                        committer_date:
+                          type: string
+                          format: date-time
+                        committer_email:
+                          type: string
+                        hash:
+                          type: string
+                        message:
+                          type: string
+                        parent_hashes:
+                          type: array
+                          items:
+                            type: string
+                        short_hash:
+                          type: string
+                  ref:
+                    type: string
+                  total:
+                    type: integer
+        "401":
+          description: Unauthorized
+        "404":
+          description: Repository not found
+  /api/v1/repos/{owner}/{repo}/commits/{sha}:
+    get:
+      tags:
+        - Commits
+      summary: Get commit
+      description: Get details of a specific commit
+      operationId: handler_RepoHandler_GetCommit
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: sha
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  author:
+                    type: string
+                  author_date:
+                    type: string
+                    format: date-time
+                  author_email:
+                    type: string
+                  committer:
+                    type: string
+                  committer_date:
+                    type: string
+                    format: date-time
+                  committer_email:
+                    type: string
+                  hash:
+                    type: string
+                  message:
+                    type: string
+                  parent_hashes:
+                    type: array
+                    items:
+                      type: string
+                  short_hash:
+                    type: string
+        "401":
+          description: Unauthorized
+        "404":
+          description: Repository or commit not found
+  /api/v1/repos/{owner}/{repo}/compare/{range}:
+    get:
+      tags:
+        - Commits
+      summary: Compare diff
+      description: Compare changes between two commits
+      operationId: handler_RepoHandler_GetCompareDiff
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: range
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  additions:
+                    type: integer
+                  commit_hash:
+                    type: string
+                  content:
+                    type: string
+                  deletions:
+                    type: integer
+                  files:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        additions:
+                          type: integer
+                        deletions:
+                          type: integer
+                        new_path:
+                          type: string
+                        old_path:
+                          type: string
+                        patch:
+                          type: string
+                        status:
+                          type: string
+                  files_changed:
+                    type: integer
+        "401":
+          description: Unauthorized
+        "404":
+          description: Repository or commit not found
+  /api/v1/repos/{owner}/{repo}/diff/{hash}:
+    get:
+      tags:
+        - Commits
+      summary: Get diff
+      description: Get diff for a commit
+      operationId: handler_RepoHandler_GetDiff
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: hash
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  additions:
+                    type: integer
+                  commit_hash:
+                    type: string
+                  content:
+                    type: string
+                  deletions:
+                    type: integer
+                  files:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        additions:
+                          type: integer
+                        deletions:
+                          type: integer
+                        new_path:
+                          type: string
+                        old_path:
+                          type: string
+                        patch:
+                          type: string
+                        status:
+                          type: string
+                  files_changed:
+                    type: integer
+        "401":
+          description: Unauthorized
+        "404":
+          description: Repository or commit not found
+  /api/v1/repos/{owner}/{repo}/stats:
+    get:
+      tags:
+        - Repositories
+      summary: Get repository stats
+      description: Get statistics for a repository
+      operationId: handler_RepoHandler_GetRepositoryStats
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  branch_count:
+                    type: integer
+                  disk_usage:
+                    type: integer
+                  tag_count:
+                    type: integer
+        "401":
+          description: Unauthorized
+        "404":
+          description: Repository not found
+  /api/v1/repos/{owner}/{repo}/tags:
+    get:
+      tags:
+        - Tags
+      summary: List tags
+      description: List all tags in the repository
+      operationId: handler_RepoHandler_ListTags
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tags:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        hash:
+                          type: string
+                        is_annotated:
+                          type: boolean
+                        message:
+                          type: string
+                        name:
+                          type: string
+                        tagger:
+                          type: string
+                  total:
+                    type: integer
+        "401":
+          description: Unauthorized
+        "404":
+          description: Repository not found
+    post:
+      tags:
+        - Tags
+      summary: Create tag
+      description: Create a new tag
+      operationId: handler_RepoHandler_CreateTag
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                commit_hash:
+                  type: string
+                message:
+                  type: string
+                name:
+                  type: string
+        required: true
+      responses:
+        "201":
+          description: Tag created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hash:
+                    type: string
+                  is_annotated:
+                    type: boolean
+                  message:
+                    type: string
+                  name:
+                    type: string
+                  tagger:
+                    type: string
+        "400":
+          description: Invalid request
+        "401":
+          description: Unauthorized
+        "404":
+          description: Repository not found
+  /api/v1/repos/{owner}/{repo}/tags/{tag}:
+    delete:
+      tags:
+        - Tags
+      summary: Delete tag
+      description: Delete a tag
+      operationId: handler_RepoHandler_DeleteTag
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: tag
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Tag deleted successfully
+        "401":
+          description: Unauthorized
+        "404":
+          description: Repository not found
+  /api/v1/repos/{owner}/{repo}/tree/{ref}:
+    get:
+      tags:
+        - Code
+      summary: Get tree
+      description: Get file tree for a reference
+      operationId: handler_RepoHandler_GetTree
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: ref
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        hash:
+                          type: string
+                        mode:
+                          type: string
+                        name:
+                          type: string
+                        path:
+                          type: string
+                        size:
+                          type: integer
+                        type:
+                          type: string
+                  path:
+                    type: string
+                  ref:
+                    type: string
+                  total:
+                    type: integer
+        "401":
+          description: Unauthorized
+        "404":
+          description: Repository or ref not found
+  /api/v1/repos/{owner}/{repo}/tree/{ref}/{path}:
+    get:
+      tags:
+        - Code
+      summary: Get tree with path
+      description: Get file tree for a reference and path
+      operationId: handler_RepoHandler_GetTree
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: ref
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: path
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        hash:
+                          type: string
+                        mode:
+                          type: string
+                        name:
+                          type: string
+                        path:
+                          type: string
+                        size:
+                          type: integer
+                        type:
+                          type: string
+                  path:
+                    type: string
+                  ref:
+                    type: string
+                  total:
+                    type: integer
+        "401":
+          description: Unauthorized
+        "404":
+          description: Repository or ref not found
+  /api/v1/repos/public:
+    get:
+      tags:
+        - Repositories
+      summary: List public repositories
+      description: Get a list of public repositories with pagination
+      operationId: handler_RepoHandler_ListPublicRepositories
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  page:
+                    type: integer
+                  per_page:
+                    type: integer
+                  repositories:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        clone_url:
+                          type: string
+                        created_at:
+                          type: string
+                          format: date-time
+                        default_branch:
+                          type: string
+                        description:
+                          type: string
+                        git_path:
+                          type: string
+                        id:
+                          type: string
+                          format: uuid
+                        is_private:
+                          type: boolean
+                        name:
+                          type: string
+                        owner:
+                          type: string
+                        owner_id:
+                          type: string
+                          format: uuid
+                        ssh_url:
+                          type: string
+                        updated_at:
+                          type: string
+                          format: date-time
+                  total:
+                    type: integer
+                  total_pages:
+                    type: integer
+  /api/v1/ssh-keys:
+    get:
+      tags:
+        - SSH Keys
+      summary: List SSH keys
+      description: Returns all SSH keys for the authenticated user
+      operationId: handler_SSHKeyHandler_ListSSHKeys
+      responses:
+        "200":
+          description: List of SSH keys
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  keys:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        created_at:
+                          type: string
+                          format: date-time
+                        fingerprint:
+                          type: string
+                        id:
+                          type: string
+                          format: uuid
+                        title:
+                          type: string
+                  total:
+                    type: integer
+        "401":
+          description: Authentication required
+    post:
+      tags:
+        - SSH Keys
+      summary: Add SSH key
+      description: Adds a new SSH public key for the authenticated user
+      operationId: handler_SSHKeyHandler_AddSSHKey
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                key:
+                  type: string
+                title:
+                  type: string
+        required: true
+      responses:
+        "201":
+          description: SSH key added successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  key:
+                    type: object
+                    properties:
+                      created_at:
+                        type: string
+                        format: date-time
+                      fingerprint:
+                        type: string
+                      id:
+                        type: string
+                        format: uuid
+                      title:
+                        type: string
+                  message:
+                    type: string
+        "400":
+          description: Invalid SSH key format
+        "401":
+          description: Authentication required
+        "409":
+          description: SSH key already exists
+  /api/v1/ssh-keys/{id}:
+    get:
+      tags:
+        - SSH Keys
+      summary: Get SSH key
+      description: Returns a specific SSH key by ID
+      operationId: handler_SSHKeyHandler_GetSSHKey
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSH key information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  created_at:
+                    type: string
+                    format: date-time
+                  fingerprint:
+                    type: string
+                  id:
+                    type: string
+                    format: uuid
+                  title:
+                    type: string
+        "401":
+          description: Authentication required
+        "404":
+          description: SSH key not found
+    delete:
+      tags:
+        - SSH Keys
+      summary: Delete SSH key
+      description: Deletes an SSH key by ID
+      operationId: handler_SSHKeyHandler_DeleteSSHKey
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSH key deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          description: Authentication required
+        "404":
+          description: SSH key not found
+  /api/v1/tokens:
+    get:
+      tags:
+        - Tokens
+      summary: List tokens
+      description: Returns all personal access tokens for the authenticated user
+      operationId: handler_TokenHandler_ListTokens
+      responses:
+        "200":
+          description: List of tokens
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tokens:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        created_at:
+                          type: string
+                          format: date-time
+                        expires_at:
+                          type: string
+                          format: date-time
+                        id:
+                          type: string
+                          format: uuid
+                        last_used:
+                          type: string
+                          format: date-time
+                        name:
+                          type: string
+                        scopes:
+                          type: array
+                          items:
+                            type: string
+                  total:
+                    type: integer
+        "401":
+          description: Authentication required
+    post:
+      tags:
+        - Tokens
+      summary: Create token
+      description: Creates a new personal access token
+      operationId: handler_TokenHandler_CreateToken
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                expires_in:
+                  type: integer
+                name:
+                  type: string
+                scopes:
+                  type: array
+                  items:
+                    type: string
+        required: true
+      responses:
+        "201":
+          description: Token created successfully
+        "400":
+          description: Invalid request
+        "401":
+          description: Authentication required
+  /api/v1/tokens/{id}:
+    delete:
+      tags:
+        - Tokens
+      summary: Delete token
+      description: Deletes a personal access token by ID
+      operationId: handler_TokenHandler_DeleteToken
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Token deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          description: Authentication required
+        "404":
+          description: Token not found
+  /api/v1/users/username:
+    put:
+      tags:
+        - Users
+      summary: Update username
+      description: Updates the current user's username
+      operationId: handler_UserHandler_UpdateCurrentUsername
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+        required: true
+      responses:
+        "200":
+          description: Username updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  email:
+                    type: string
+                  id:
+                    type: string
+                    format: uuid
+                  is_admin:
+                    type: boolean
+                  username:
+                    type: string
+        "400":
+          description: Invalid request
+        "401":
+          description: Authentication required
+        "409":
+          description: Username already taken
+  /docs:
+    get:
+      tags:
+        - Documentation
+      summary: API Documentation
+      description: View the interactive API documentation (Scalar)
+      operationId: router_Router_docsRouter_func1
+      responses:
+        "200":
+          description: HTML Documentation
+  /docs/openapi.yaml:
+    get:
+      tags:
+        - Documentation
+      summary: Get OpenAPI Spec
+      description: Download the OpenAPI specification in YAML format
+      operationId: router_Router_docsRouter_RouterGroup_StaticFile_func2
+      responses:
+        "200":
+          description: OpenAPI YAML file
+    head:
+      tags:
+        - Documentation
+      summary: Check OpenAPI Spec
+      description: Check availability of the OpenAPI specification
+      operationId: router_Router_docsRouter_RouterGroup_StaticFile_func2
+      responses:
+        "200":
+          description: OpenAPI YAML file is available

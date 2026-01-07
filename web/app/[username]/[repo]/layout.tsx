@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { getRepository, listBranches, listTags } from "@/lib/api";
-import BranchSelector from "@/components/branch-selector";
+import BranchSelector from "@/components/BranchSelector";
+import CloneCard from "@/components/CloneCard";
+import { env } from "@/lib/env";
 
 export default async function RepoLayout({
   children,
@@ -10,6 +12,8 @@ export default async function RepoLayout({
   params: Promise<{ username: string; repo: string }>;
 }) {
   const { username, repo } = await params;
+  const httpUrl = `${env.STASIS_SERVER_HOSTED_URL}/${username}/${repo}.git`;
+  const sshUrl = `ssh://git@${env.STASIS_SSH_HOST_NAME}/${username}/${repo}.git`;
 
   let repoData: {
     is_private?: boolean;
@@ -109,19 +113,26 @@ export default async function RepoLayout({
             )}
           </Link>
           <Link
+            href={`/${username}/${repo}/ci`}
+            className="border-b-2 border-transparent hover:border-base text-muted pb-3 px-1 hover:text-accent"
+          >
+            CI
+          </Link>
+          <Link
             href={`/${username}/${repo}/settings`}
             className="border-b-2 border-transparent hover:border-base text-muted pb-3 px-1 hover:text-accent"
           >
             Settings
           </Link>
         </nav>
-        <div className="mb-2 flex items-center gap-2 text-muted bg-panel px-2 py-1 rounded-md border border-base">
+        <div className="flex items-center gap-2 mb-2">
           <BranchSelector
             branches={branches.map((b) => ({
               name: b.name,
               is_head: b.is_head,
             }))}
           />
+          <CloneCard httpUrl={httpUrl} sshUrl={sshUrl} />
         </div>
       </div>
 

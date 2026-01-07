@@ -18,6 +18,7 @@ type Config struct {
 	SSH      SSHConfig      `mapstructure:"ssh"`
 	OIDC     OIDCConfig     `mapstructure:"oidc"`
 	Logging  LoggingConfig  `mapstructure:"logging"`
+	CI       CIConfig       `mapstructure:"ci"`
 }
 
 // ServerConfig holds HTTP server configuration
@@ -317,6 +318,17 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("logging.otel.service_version", "1.0.0")
 	v.SetDefault("logging.otel.environment", "development")
 	v.SetDefault("logging.otel.insecure", true)
+
+	// CI defaults
+	v.SetDefault("ci.enabled", false)
+	v.SetDefault("ci.server_url", "http://localhost:8081")
+	v.SetDefault("ci.git_server_url", "")
+	v.SetDefault("ci.api_key", "")
+	v.SetDefault("ci.config_path", ".stasis-ci.yaml")
+	v.SetDefault("ci.timeout", 30)
+	v.SetDefault("ci.webhook_secret", "")
+	v.SetDefault("ci.max_concurrent_jobs", 5)
+	v.SetDefault("ci.retention_days", 30)
 }
 
 // overrideFromEnv handles special environment variable overrides
@@ -346,6 +358,14 @@ func overrideFromEnv(v *viper.Viper) {
 	}
 	if oidcFrontendURL := os.Getenv("STASIS_OIDC_FRONTEND_URL"); oidcFrontendURL != "" {
 		v.Set("oidc.frontend_url", oidcFrontendURL)
+	}
+
+	// CI credentials from env
+	if ciAPIKey := os.Getenv("STASIS_CI_API_KEY"); ciAPIKey != "" {
+		v.Set("ci.api_key", ciAPIKey)
+	}
+	if ciWebhookSecret := os.Getenv("STASIS_CI_WEBHOOK_SECRET"); ciWebhookSecret != "" {
+		v.Set("ci.webhook_secret", ciWebhookSecret)
 	}
 }
 

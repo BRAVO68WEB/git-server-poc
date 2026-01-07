@@ -2,6 +2,7 @@ import { getBlob, getBlame } from "@/lib/api";
 import Link from "next/link";
 import { BlameLine } from "@/lib/types";
 import Image from "next/image";
+import { CodeViewer } from "@/components/CodeViewer";
 
 export default async function BlobPage({
   params,
@@ -74,7 +75,6 @@ export default async function BlobPage({
       .map((seg) => encodeURIComponent(seg))
       .join("/");
   const encodedParent = encodeSegments(parentPath);
-  const lines = isBlame || isBinary ? [] : content.split("\n");
 
   // Get file extension for potential image preview
   const fileExtension = path.split(".").pop()?.toLowerCase() || "";
@@ -141,41 +141,32 @@ export default async function BlobPage({
             </div>
           )}
         </div>
-      ) : (
+      ) : isBlame ? (
         <div className="overflow-x-auto text-sm font-mono leading-6 bg-panel">
           <table className="w-full border-collapse">
             <tbody>
-              {isBlame
-                ? blameData.map((line, i) => (
-                    <tr key={i}>
-                      <td
-                        className="w-48 px-2 text-xs text-muted border-r border-base truncate"
-                        title={line.commit}
-                      >
-                        {line.commit.substring(0, 7)}{" "}
-                        <span className="text-zinc-400">|</span> {line.author}
-                      </td>
-                      <td className="w-12 text-right select-none text-muted bg-panel pr-4 border-r border-base py-0.5">
-                        {line.line_no}
-                      </td>
-                      <td className="pl-4 whitespace-pre text-base py-0.5">
-                        {line.content}
-                      </td>
-                    </tr>
-                  ))
-                : lines.map((line, i) => (
-                    <tr key={i}>
-                      <td className="w-12 text-right select-none text-muted bg-panel pr-4 border-r border-base py-0.5">
-                        {i + 1}
-                      </td>
-                      <td className="pl-4 whitespace-pre text-base py-0.5">
-                        {line}
-                      </td>
-                    </tr>
-                  ))}
+              {blameData.map((line, i) => (
+                <tr key={i}>
+                  <td
+                    className="w-48 px-2 text-xs text-muted border-r border-base truncate"
+                    title={line.commit}
+                  >
+                    {line.commit.substring(0, 7)}{" "}
+                    <span className="text-zinc-400">|</span> {line.author}
+                  </td>
+                  <td className="w-12 text-right select-none text-muted bg-panel pr-4 border-r border-base py-0.5">
+                    {line.line_no}
+                  </td>
+                  <td className="pl-4 whitespace-pre text-base py-0.5">
+                    {line.content}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
+      ) : (
+        <CodeViewer content={content} filePath={path} />
       )}
     </div>
   );

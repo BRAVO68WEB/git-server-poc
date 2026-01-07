@@ -12,10 +12,12 @@ import (
 	"github.com/bravo68web/stasis/internal/infrastructure/database"
 	"github.com/bravo68web/stasis/internal/infrastructure/otel"
 	"github.com/bravo68web/stasis/pkg/logger"
+	"github.com/bravo68web/stasis/pkg/openapi"
 )
 
 type Server struct {
 	*gin.Engine
+	OpenAPIGenerator *openapi.Generator
 
 	Config       *config.Config
 	DB           *database.Database
@@ -120,6 +122,30 @@ func New() *Server {
 	// Create Gin engine without default middleware
 	engine := gin.New()
 
+	apiGen := openapi.NewGenerator(engine, openapi.Info{
+		Title:       "Stasis - Git Server API",
+		Version:     "1.0.0",
+		Description: "A self-hosted Git server API that provides repository management, authentication, SSH key management, and Git Smart HTTP protocol support.",
+		Contact: &openapi.Contact{
+			Name: "Bravo68Web",
+		},
+		License: &openapi.License{
+			Name: "MIT",
+		},
+	}, []openapi.Server{
+		{URL: "http://localhost:8080", Description: "Local development server"},
+	}, []openapi.Tag{
+		{Name: "Health", Description: "Health check endpoints"},
+		{Name: "Authentication", Description: "User authentication and registration"},
+		{Name: "SSH Keys", Description: "SSH key management for Git SSH access"},
+		{Name: "Repositories", Description: "Repository management operations"},
+		{Name: "Branches", Description: "Branch management operations"},
+		{Name: "Tags", Description: "Tag management operations"},
+		{Name: "Commits", Description: "Commit history and details"},
+		{Name: "Code", Description: "File tree, content, and blame information"},
+		{Name: "Git Protocol", Description: "Git Smart HTTP protocol endpoints"},
+	})
+
 	log.Info("Server initialized",
 		logger.String("host", cfg.Server.Host),
 		logger.Int("port", cfg.Server.Port),
@@ -127,11 +153,12 @@ func New() *Server {
 	)
 
 	return &Server{
-		Engine:       engine,
-		Config:       cfg,
-		DB:           db,
-		Logger:       log,
-		OTELProvider: otelProvider,
+		Engine:           engine,
+		OpenAPIGenerator: apiGen,
+		Config:           cfg,
+		DB:               db,
+		Logger:           log,
+		OTELProvider:     otelProvider,
 	}
 }
 

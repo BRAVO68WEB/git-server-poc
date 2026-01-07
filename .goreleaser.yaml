@@ -1,13 +1,13 @@
 version: 2
-project_name: githut
+project_name: stasis
 
 before:
   hooks:
     - go mod tidy
 builds:
-  - id: githut
-    main: ./cmd/githut
-    binary: githut
+  - id: stasis
+    main: ./cmd/stasis
+    binary: stasis
     env:
       - CGO_ENABLED=0
     goos:

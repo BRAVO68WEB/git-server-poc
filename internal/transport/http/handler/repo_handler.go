@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/bravo68web/stasis/internal/application/dto"
 	"github.com/bravo68web/stasis/internal/application/service"
@@ -850,6 +851,49 @@ func (h *RepoHandler) GetDiff(c *gin.Context) {
 	}
 
 	diffResult, err := h.repoService.GetDiff(c.Request.Context(), repo, hash)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":   "not_found",
+			"message": "Diff not found",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	response := dto.DiffFromService(diffResult)
+	c.JSON(http.StatusOK, response)
+}
+
+// GetCompareDiff handles GET /api/v1/repos/:owner/:repo/compare/:range
+func (h *RepoHandler) GetCompareDiff(c *gin.Context) {
+	owner := c.Param("owner")
+	repoName := c.Param("repo")
+	rng := c.Param("range")
+	parts := strings.Split(rng, "..")
+	if len(parts) != 2 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "bad_request",
+			"message": "Range must be in format <from>..<to>",
+		})
+		return
+	}
+
+	repo, err := h.repoService.GetRepository(c.Request.Context(), owner, repoName)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+
+	user := middleware.GetUserFromContext(c)
+	if repo.IsPrivate && (user == nil || (user.ID != repo.OwnerID && !user.IsAdmin)) {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":   "not_found",
+			"message": "Repository not found",
+		})
+		return
+	}
+
+	diffResult, err := h.repoService.GetCompareDiff(c.Request.Context(), repo, parts[0], parts[1])
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"error":   "not_found",

@@ -24,9 +24,10 @@ type Tag struct {
 
 // Branch represents a Git branch
 type Branch struct {
-	Name   string
-	Hash   string
-	IsHead bool // True if this is the current HEAD
+	Name        string
+	Hash        string
+	IsHead      bool // True if this is the current HEAD branch
+	CommitCount int  // Number of commits on this branch
 }
 
 // Commit represents a Git commit
@@ -199,4 +200,7 @@ type GitService interface {
 	// Diff operations
 	// GetDiff returns the diff (patch) for a specific commit
 	GetDiff(ctx context.Context, repoPath, commitHash string) (*DiffResult, error)
+
+	// Compare diff between two commits
+	GetCompareDiff(ctx context.Context, repoPath, from, to string) (*DiffResult, error)
 }
