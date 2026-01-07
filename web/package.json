@@ -6,11 +6,13 @@
     "dev": "NODE_ENV=development next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "copy:icons": "mkdir -p web/public/icons && cp web/node_modules/material-icon-theme/icons/*.svg web/public/icons/"
   },
   "dependencies": {
     "@t3-oss/env-nextjs": "^0.13.10",
     "highlight.js": "^11.11.1",
+    "material-icon-theme": "^5.30.0",
     "next": "16.0.10",
     "react": "19.2.1",
     "react-dom": "19.2.1",

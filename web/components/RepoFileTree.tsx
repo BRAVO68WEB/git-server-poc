@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { FileEntry } from "@/lib/types";
+import { getIconSrc } from "@/lib/icons";
 
 export function RepoFileTree({
   owner,
@@ -79,8 +80,14 @@ export function RepoFileTree({
                 key={entry.path || entry.name}
                 className="border-b last:border-0 border-base hover:bg-base transition-colors"
               >
-                <td className="px-4 py-2 w-8 text-muted text-center">
-                  {entry.type === "tree" ? "📁" : "📄"}
+                <td className="px-4 py-2 w-12 align-middle">
+                  <div className="flex items-center justify-center">
+                    <img
+                      src={getIconSrc(entry)}
+                      alt=""
+                      className="w-5 h-5 block"
+                    />
+                  </div>
                 </td>
                 <td className="px-4 py-2">
                   <Link
