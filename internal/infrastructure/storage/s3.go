@@ -64,10 +64,14 @@ func NewS3Storage(ctx context.Context, cfg S3Config) (*S3Storage, error) {
 
 	// Create S3 client with optional custom endpoint
 	var s3Opts []func(*s3.Options)
+	s3Opts = append(s3Opts, func(o *s3.Options) {
+		o.UsePathStyle = cfg.UsePathStyle
+	})
+
+	// Add custom endpoint if provided
 	if cfg.Endpoint != "" {
 		s3Opts = append(s3Opts, func(o *s3.Options) {
 			o.BaseEndpoint = aws.String(cfg.Endpoint)
-			o.UsePathStyle = cfg.UsePathStyle
 		})
 	}
 

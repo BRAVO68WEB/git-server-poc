@@ -56,13 +56,14 @@ func (d *DatabaseConfig) URL() string {
 
 // StorageConfig holds storage backend configuration
 type StorageConfig struct {
-	Type        string `mapstructure:"type"` // filesystem, s3
-	BasePath    string `mapstructure:"base_path"`
-	S3Bucket    string `mapstructure:"s3_bucket"`
-	S3Region    string `mapstructure:"s3_region"`
-	S3AccessKey string `mapstructure:"s3_access_key"`
-	S3SecretKey string `mapstructure:"s3_secret_key"`
-	S3Endpoint  string `mapstructure:"s3_endpoint"` // For S3-compatible services
+	Type           string `mapstructure:"type"` // filesystem, s3
+	BasePath       string `mapstructure:"base_path"`
+	S3Bucket       string `mapstructure:"s3_bucket"`
+	S3Region       string `mapstructure:"s3_region"`
+	S3AccessKey    string `mapstructure:"s3_access_key"`
+	S3SecretKey    string `mapstructure:"s3_secret_key"`
+	S3Endpoint     string `mapstructure:"s3_endpoint"`       // For S3-compatible services
+	S3UsePathStyle bool   `mapstructure:"s3_use_path_style"` // Use path-style addressing (required for MinIO)
 }
 
 // IsS3 returns true if the storage type is S3

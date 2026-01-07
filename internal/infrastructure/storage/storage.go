@@ -69,11 +69,12 @@ func (f *Factory) Create() (service.StorageService, error) {
 		storage, err := NewS3Storage(
 			context.Background(),
 			S3Config{
-				Bucket:    f.config.S3Bucket,
-				Region:    f.config.S3Region,
-				AccessKey: f.config.S3AccessKey,
-				SecretKey: f.config.S3SecretKey,
-				Endpoint:  f.config.S3Endpoint,
+				Bucket:       f.config.S3Bucket,
+				Region:       f.config.S3Region,
+				AccessKey:    f.config.S3AccessKey,
+				SecretKey:    f.config.S3SecretKey,
+				Endpoint:     f.config.S3Endpoint,
+				UsePathStyle: f.config.S3UsePathStyle || f.config.S3Endpoint != "",
 			},
 		)
 		if err != nil {
