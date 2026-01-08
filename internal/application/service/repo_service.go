@@ -121,6 +121,15 @@ func (s *RepoService) CreateRepository(ctx context.Context, ownerID uuid.UUID, n
 		return nil, fmt.Errorf("failed to initialize git repository: %w", err)
 	}
 
+	// Sync to remote storage (S3) after initialization
+	if err := s.storage.SyncToRemote(gitPath); err != nil {
+		s.log.Warn("Failed to sync new repository to remote storage",
+			logger.Error(err),
+			logger.String("git_path", gitPath),
+		)
+		// Don't fail creation, just log the warning
+	}
+
 	// Save to database
 	if err := s.repoRepo.Create(ctx, repo); err != nil {
 		s.log.Error("Failed to create repository in database",

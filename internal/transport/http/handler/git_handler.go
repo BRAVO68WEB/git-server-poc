@@ -195,6 +195,17 @@ func (h *GitHandler) HandleReceivePack(c *gin.Context) {
 		return
 	}
 
+	// Sync to remote storage (S3) after successful push
+	// This runs synchronously to ensure data is persisted before returning
+	if err := h.storage.SyncToRemote(repo.GitPath); err != nil {
+		h.log.Error("Failed to sync repository to remote storage",
+			logger.Error(err),
+			logger.String("repo", repo.Name),
+			logger.String("path", repo.GitPath),
+		)
+		// Don't fail the push, just log the error
+	}
+
 	// Set default branch if not already set (first push)
 	h.repoService.SetDefaultBranchOnPush(c.Request.Context(), repo)
 

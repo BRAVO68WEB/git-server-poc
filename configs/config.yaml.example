@@ -23,6 +23,7 @@ storage:
   # s3_access_key: ""
   # s3_secret_key: ""
   # s3_endpoint: ""  # For S3-compatible services like MinIO
+  # s3_use_path_style: false # For S3-compatible services like MinIO
 
 ssh:
   enabled: true

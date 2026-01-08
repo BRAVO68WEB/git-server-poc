@@ -373,5 +373,12 @@ func (s *FilesystemStorage) resolvePath(path string) string {
 	return filepath.Join(s.basePath, path)
 }
 
+// SyncToRemote is a no-op for filesystem storage
+// since files are already on the local filesystem
+func (s *FilesystemStorage) SyncToRemote(localPath string) error {
+	// No-op for filesystem storage
+	return nil
+}
+
 // Verify interface compliance at compile time
 var _ service.StorageService = (*FilesystemStorage)(nil)

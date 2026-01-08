@@ -93,4 +93,9 @@ type StorageService interface {
 
 	// GetDiskUsage returns the total size of a directory in bytes
 	GetDiskUsage(path string) (int64, error)
+
+	// SyncToRemote syncs a local path to remote storage (e.g., S3)
+	// For filesystem storage, this is a no-op
+	// For S3 storage, this uploads local files to S3
+	SyncToRemote(localPath string) error
 }
