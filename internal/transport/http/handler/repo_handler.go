@@ -11,30 +11,34 @@ import (
 	apperrors "github.com/bravo68web/stasis/pkg/errors"
 	"github.com/bravo68web/stasis/pkg/logger"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // RepoHandler handles repository-related HTTP requests
 type RepoHandler struct {
-	repoService *service.RepoService
-	baseURL     string
-	sshHost     string
-	sshPort     int
-	log         *logger.Logger
+	repoService       *service.RepoService
+	mirrorSyncService *service.MirrorSyncService
+	baseURL           string
+	sshHost           string
+	sshPort           int
+	log               *logger.Logger
 }
 
 // NewRepoHandler creates a new RepoHandler instance
 func NewRepoHandler(
 	repoService *service.RepoService,
+	mirrorSyncService *service.MirrorSyncService,
 	baseURL string,
 	sshHost string,
 	sshPort int,
 ) *RepoHandler {
 	return &RepoHandler{
-		repoService: repoService,
-		baseURL:     baseURL,
-		sshHost:     sshHost,
-		sshPort:     sshPort,
-		log:         logger.Get().WithFields(logger.Component("repo-handler")),
+		repoService:       repoService,
+		mirrorSyncService: mirrorSyncService,
+		baseURL:           baseURL,
+		sshHost:           sshHost,
+		sshPort:           sshPort,
+		log:               logger.Get().WithFields(logger.Component("repo-handler")),
 	}
 }
 
@@ -120,7 +124,99 @@ func (h *RepoHandler) CreateRepository(c *gin.Context) {
 	c.JSON(http.StatusCreated, response)
 }
 
-// ListRepositories handles GET /api/repos
+// ImportRepository imports a repository from an external Git source
+func (h *RepoHandler) ImportRepository(c *gin.Context) {
+	user := middleware.GetUserFromContext(c)
+	if user == nil {
+		h.log.Warn("Import repository attempted without authentication",
+			logger.ClientIP(c.ClientIP()),
+		)
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":   "unauthorized",
+			"message": "Authentication required",
+		})
+		return
+	}
+
+	h.log.Debug("Import repository request received",
+		logger.String("user_id", user.ID.String()),
+		logger.String("username", user.Username),
+	)
+
+	var req dto.ImportRepoRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.log.Warn("Invalid import repository request body",
+			logger.Error(err),
+			logger.String("user_id", user.ID.String()),
+		)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "bad_request",
+			"message": "Invalid request body",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	// Validate request
+	if err := req.Validate(); err != nil {
+		h.log.Warn("Repository import validation failed",
+			logger.Error(err),
+			logger.String("name", req.Name),
+			logger.String("clone_url", req.CloneURL),
+		)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "validation_error",
+			"message": err.Error(),
+		})
+		return
+	}
+
+	h.log.Info("Importing repository",
+		logger.String("name", req.Name),
+		logger.String("owner", user.Username),
+		logger.String("clone_url", req.CloneURL),
+		logger.Bool("is_private", req.IsPrivate),
+		logger.Bool("mirror", req.Mirror),
+	)
+
+	// Import repository
+	repo, err := h.repoService.ImportRepository(
+		c.Request.Context(),
+		user.ID,
+		req.Name,
+		req.Description,
+		req.CloneURL,
+		req.Username,
+		req.Password,
+		req.IsPrivate,
+		req.Mirror,
+	)
+	if err != nil {
+		h.log.Error("Failed to import repository",
+			logger.Error(err),
+			logger.String("name", req.Name),
+			logger.String("owner", user.Username),
+			logger.String("clone_url", req.CloneURL),
+		)
+		h.handleError(c, err)
+		return
+	}
+
+	h.log.Info("Repository imported successfully",
+		logger.String("repo_id", repo.ID.String()),
+		logger.String("name", repo.Name),
+		logger.String("owner", user.Username),
+		logger.String("clone_url", req.CloneURL),
+		logger.Bool("mirror", req.Mirror),
+	)
+
+	// Build response
+	response := dto.RepoFromModel(repo, h.baseURL, h.sshHost, h.sshPort)
+
+	c.JSON(http.StatusCreated, response)
+}
+
+// ListRepositories lists all repositories for the authenticated user
 func (h *RepoHandler) ListRepositories(c *gin.Context) {
 	user := middleware.GetUserFromContext(c)
 	if user == nil {
@@ -1016,6 +1112,318 @@ func (h *RepoHandler) GetBlame(c *gin.Context) {
 
 	response := dto.BlameFromService(blameLines, path, ref)
 	c.JSON(http.StatusOK, response)
+}
+
+// UpdateMirrorSettings handles PATCH /api/repos/:owner/:repo/mirror
+func (h *RepoHandler) UpdateMirrorSettings(c *gin.Context) {
+	user := middleware.GetUserFromContext(c)
+	if user == nil {
+		h.log.Warn("Update mirror settings attempted without authentication",
+			logger.ClientIP(c.ClientIP()),
+		)
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":   "unauthorized",
+			"message": "Authentication required",
+		})
+		return
+	}
+
+	owner := c.Param("owner")
+	repoName := c.Param("repo")
+
+	h.log.Debug("Update mirror settings request received",
+		logger.String("owner", owner),
+		logger.String("repo", repoName),
+		logger.String("user_id", user.ID.String()),
+	)
+
+	// Get repository
+	repo, err := h.repoService.GetRepository(c.Request.Context(), owner, repoName)
+	if err != nil {
+		h.log.Error("Failed to get repository",
+			logger.Error(err),
+			logger.String("owner", owner),
+			logger.String("repo", repoName),
+		)
+		h.handleError(c, err)
+		return
+	}
+
+	// Verify user has access (owner or admin)
+	if repo.OwnerID != user.ID && !user.IsAdmin {
+		h.log.Warn("User does not have permission to update mirror settings",
+			logger.String("user_id", user.ID.String()),
+			logger.String("repo_id", repo.ID.String()),
+		)
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":   "forbidden",
+			"message": "You do not have permission to update this repository",
+		})
+		return
+	}
+
+	// Parse request body
+	var req dto.UpdateMirrorSettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.log.Warn("Invalid update mirror settings request body",
+			logger.Error(err),
+			logger.String("user_id", user.ID.String()),
+		)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "bad_request",
+			"message": "Invalid request body",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	// Update mirror settings
+	h.log.Info("Updating mirror settings",
+		logger.String("repo_id", repo.ID.String()),
+		logger.String("owner", owner),
+		logger.String("repo", repoName),
+	)
+
+	updatedRepo, err := h.repoService.UpdateMirrorSettings(
+		c.Request.Context(),
+		repo.ID,
+		&req,
+	)
+	if err != nil {
+		h.log.Error("Failed to update mirror settings",
+			logger.Error(err),
+			logger.String("repo_id", repo.ID.String()),
+		)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "internal_error",
+			"message": "Failed to update mirror settings: " + err.Error(),
+		})
+		return
+	}
+
+	h.log.Info("Mirror settings updated successfully",
+		logger.String("repo_id", repo.ID.String()),
+		logger.String("owner", owner),
+		logger.String("repo", repoName),
+	)
+
+	// Build response
+	response := dto.RepoFromModel(updatedRepo, h.baseURL, h.sshHost, h.sshPort)
+
+	c.JSON(http.StatusOK, response)
+}
+
+// GetMirrorSettings handles GET /api/repos/:owner/:repo/mirror
+func (h *RepoHandler) GetMirrorSettings(c *gin.Context) {
+	user := middleware.GetUserFromContext(c)
+	owner := c.Param("owner")
+	repoName := c.Param("repo")
+
+	h.log.Debug("Get mirror settings request received",
+		logger.String("owner", owner),
+		logger.String("repo", repoName),
+	)
+
+	// Get repository
+	repo, err := h.repoService.GetRepository(c.Request.Context(), owner, repoName)
+	if err != nil {
+		h.log.Error("Failed to get repository",
+			logger.Error(err),
+			logger.String("owner", owner),
+			logger.String("repo", repoName),
+		)
+		h.handleError(c, err)
+		return
+	}
+
+	// Check if user can access this repository
+	var userID *uuid.UUID
+	if user != nil {
+		userID = &user.ID
+	}
+	canAccess := h.repoService.CanUserAccessRepository(c.Request.Context(), userID, repo, "read")
+
+	if !canAccess {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":   "not_found",
+			"message": "Repository not found",
+		})
+		return
+	}
+
+	// Build mirror settings response (don't expose passwords)
+	settings := dto.MirrorSettingsResponse{
+		MirrorEnabled:      repo.MirrorEnabled,
+		MirrorDirection:    repo.MirrorDirection,
+		UpstreamURL:        repo.UpstreamURL,
+		UpstreamUsername:   repo.UpstreamUsername,
+		DownstreamURL:      repo.DownstreamURL,
+		DownstreamUsername: repo.DownstreamUsername,
+		SyncInterval:       repo.SyncInterval,
+		SyncSchedule:       repo.SyncSchedule,
+		LastSyncedAt:       repo.LastSyncedAt,
+		NextSyncAt:         repo.GetNextSyncTime(),
+		SyncStatus:         repo.SyncStatus,
+		SyncError:          repo.SyncError,
+	}
+
+	c.JSON(http.StatusOK, settings)
+}
+
+// SyncMirror handles POST /api/repos/:owner/:repo/sync
+func (h *RepoHandler) SyncMirror(c *gin.Context) {
+	user := middleware.GetUserFromContext(c)
+	if user == nil {
+		h.log.Warn("Sync mirror attempted without authentication",
+			logger.ClientIP(c.ClientIP()),
+		)
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":   "unauthorized",
+			"message": "Authentication required",
+		})
+		return
+	}
+
+	owner := c.Param("owner")
+	repoName := c.Param("repo")
+
+	h.log.Debug("Sync mirror request received",
+		logger.String("owner", owner),
+		logger.String("repo", repoName),
+		logger.String("user_id", user.ID.String()),
+	)
+
+	// Get repository
+	repo, err := h.repoService.GetRepository(c.Request.Context(), owner, repoName)
+	if err != nil {
+		h.log.Error("Failed to get repository",
+			logger.Error(err),
+			logger.String("owner", owner),
+			logger.String("repo", repoName),
+		)
+		h.handleError(c, err)
+		return
+	}
+
+	// Verify user has access (owner or admin)
+	if repo.OwnerID != user.ID && !user.IsAdmin {
+		h.log.Warn("User does not have permission to sync repository",
+			logger.String("user_id", user.ID.String()),
+			logger.String("repo_id", repo.ID.String()),
+		)
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":   "forbidden",
+			"message": "You do not have permission to sync this repository",
+		})
+		return
+	}
+
+	// Verify mirror is enabled
+	if !repo.MirrorEnabled {
+		h.log.Warn("Repository mirror is not enabled",
+			logger.String("repo_id", repo.ID.String()),
+			logger.String("repo_name", repo.Name),
+		)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "bad_request",
+			"message": "Repository mirror is not enabled",
+		})
+		return
+	}
+
+	// Trigger sync
+	h.log.Info("Triggering mirror sync",
+		logger.String("repo_id", repo.ID.String()),
+		logger.String("owner", owner),
+		logger.String("repo", repoName),
+	)
+
+	if err := h.mirrorSyncService.SyncRepository(c.Request.Context(), repo.ID); err != nil {
+		h.log.Error("Failed to trigger sync",
+			logger.Error(err),
+			logger.String("repo_id", repo.ID.String()),
+		)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "internal_error",
+			"message": "Failed to trigger sync: " + err.Error(),
+		})
+		return
+	}
+
+	h.log.Info("Mirror sync triggered successfully",
+		logger.String("repo_id", repo.ID.String()),
+		logger.String("owner", owner),
+		logger.String("repo", repoName),
+	)
+
+	c.JSON(http.StatusAccepted, gin.H{
+		"message": "Mirror sync started",
+		"status":  "syncing",
+	})
+}
+
+// GetMirrorStatus handles GET /api/repos/:owner/:repo/mirror/status
+func (h *RepoHandler) GetMirrorStatus(c *gin.Context) {
+	user := middleware.GetUserFromContext(c)
+	owner := c.Param("owner")
+	repoName := c.Param("repo")
+
+	h.log.Debug("Get mirror status request received",
+		logger.String("owner", owner),
+		logger.String("repo", repoName),
+	)
+
+	// Get repository
+	repo, err := h.repoService.GetRepository(c.Request.Context(), owner, repoName)
+	if err != nil {
+		h.log.Error("Failed to get repository",
+			logger.Error(err),
+			logger.String("owner", owner),
+			logger.String("repo", repoName),
+		)
+		h.handleError(c, err)
+		return
+	}
+
+	// Check if user can access this repository
+	var userID *uuid.UUID
+	if user != nil {
+		userID = &user.ID
+	}
+	canAccess := h.repoService.CanUserAccessRepository(c.Request.Context(), userID, repo, "read")
+
+	if !canAccess {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":   "not_found",
+			"message": "Repository not found",
+		})
+		return
+	}
+
+	// Verify mirror is enabled
+	if !repo.MirrorEnabled {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "bad_request",
+			"message": "Repository mirror is not enabled",
+		})
+		return
+	}
+
+	// Get sync status
+	status, err := h.mirrorSyncService.GetSyncStatus(c.Request.Context(), repo.ID)
+	if err != nil {
+		h.log.Error("Failed to get sync status",
+			logger.Error(err),
+			logger.String("repo_id", repo.ID.String()),
+		)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "internal_error",
+			"message": "Failed to get sync status",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, status)
 }
 
 // handleError handles errors and returns appropriate HTTP responses

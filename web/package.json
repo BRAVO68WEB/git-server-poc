@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@t3-oss/env-nextjs": "^0.13.10",
+    "croner": "^9.1.0",
     "highlight.js": "^11.11.1",
     "material-icon-theme": "^5.30.0",
     "next": "16.0.10",

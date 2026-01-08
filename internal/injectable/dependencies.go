@@ -3,6 +3,8 @@ package injectable
 import (
 	"context"
 
+	"time"
+
 	"github.com/bravo68web/stasis/internal/application/service"
 	"github.com/bravo68web/stasis/internal/config"
 	domainservice "github.com/bravo68web/stasis/internal/domain/service"
@@ -16,15 +18,17 @@ import (
 // Dependencies holds all the dependencies required by the router
 type Dependencies struct {
 	// Services
-	AuthService   domainservice.AuthService
-	GitService    domainservice.GitService
-	RepoService   *service.RepoService
-	UserService   *service.UserService
-	SSHKeyService *service.SSHKeyService
-	TokenService  *service.TokenService
-	OIDCService   *service.OIDCService
-	CIService     *service.CIService
-	Storage       domainservice.StorageService
+	AuthService       domainservice.AuthService
+	GitService        domainservice.GitService
+	RepoService       *service.RepoService
+	UserService       *service.UserService
+	SSHKeyService     *service.SSHKeyService
+	TokenService      *service.TokenService
+	OIDCService       *service.OIDCService
+	CIService         *service.CIService
+	MirrorSyncService *service.MirrorSyncService
+	MirrorCronService *service.MirrorCronService
+	Storage           domainservice.StorageService
 }
 
 func LoadDependencies(cfg *config.Config, db *database.Database) Dependencies {
@@ -112,6 +116,23 @@ func LoadDependencies(cfg *config.Config, db *database.Database) Dependencies {
 		log.Info("CI service is disabled")
 	}
 
+	// Initialize mirror sync services
+	log.Debug("Initializing mirror sync services...")
+	mirrorSyncService := service.NewMirrorSyncService(
+		repoRepo,
+		gitService,
+	)
+
+	// Initialize mirror cron service (checks per-repository intervals)
+	mirrorCronService := service.NewMirrorCronService(
+		mirrorSyncService,
+		1*time.Minute, // Check every minute for repositories that need syncing
+	)
+
+	// Always start cron service (it will check each repo's individual settings)
+	mirrorCronService.Start()
+	log.Info("Mirror sync cron service started (per-repository intervals)")
+
 	log.Info("All application services initialized successfully",
 		logger.Bool("auth_service", true),
 		logger.Bool("git_service", true),
@@ -121,19 +142,23 @@ func LoadDependencies(cfg *config.Config, db *database.Database) Dependencies {
 		logger.Bool("token_service", true),
 		logger.Bool("oidc_service", cfg.OIDC.Enabled),
 		logger.Bool("ci_service", cfg.CI.Enabled),
+		logger.Bool("mirror_sync_service", true),
+		logger.Bool("mirror_cron_service", true),
 	)
 
 	log.Info("Dependencies loaded successfully")
 
 	return Dependencies{
-		AuthService:   authService,
-		GitService:    gitService,
-		RepoService:   repoService,
-		UserService:   userService,
-		SSHKeyService: sshKeyService,
-		TokenService:  tokenService,
-		OIDCService:   oidcService,
-		CIService:     ciService,
-		Storage:       storageService,
+		AuthService:       authService,
+		GitService:        gitService,
+		RepoService:       repoService,
+		UserService:       userService,
+		SSHKeyService:     sshKeyService,
+		TokenService:      tokenService,
+		OIDCService:       oidcService,
+		CIService:         ciService,
+		MirrorSyncService: mirrorSyncService,
+		MirrorCronService: mirrorCronService,
+		Storage:           storageService,
 	}
 }

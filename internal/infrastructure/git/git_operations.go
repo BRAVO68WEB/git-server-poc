@@ -19,9 +19,11 @@ import (
 	"github.com/bravo68web/stasis/pkg/logger"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
+	gitconfig "github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/filemode"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 )
 
 // GitOperations implements the GitService interface using go-git library
@@ -82,17 +84,28 @@ func (g *GitOperations) InitRepository(ctx context.Context, repoPath string, bar
 }
 
 // CloneRepository clones a repository from source to destination
-func (g *GitOperations) CloneRepository(ctx context.Context, source, dest string, bare bool) error {
+func (g *GitOperations) CloneRepository(ctx context.Context, source, dest, username, password string, mirror bool) error {
 	g.log.Info("Cloning git repository",
 		logger.String("source", source),
 		logger.String("dest", dest),
-		logger.Bool("bare", bare),
+		logger.Bool("mirror", mirror),
 	)
 
-	_, err := git.PlainClone(dest, bare, &git.CloneOptions{
+	cloneOptions := &git.CloneOptions{
 		URL:      source,
 		Progress: nil,
-	})
+		Mirror:   mirror,
+	}
+
+	// Add authentication if provided
+	if username != "" || password != "" {
+		cloneOptions.Auth = &githttp.BasicAuth{
+			Username: username,
+			Password: password,
+		}
+	}
+
+	_, err := git.PlainClone(dest, mirror, cloneOptions)
 	if err != nil {
 		g.log.Error("Failed to clone repository",
 			logger.Error(err),
@@ -105,7 +118,197 @@ func (g *GitOperations) CloneRepository(ctx context.Context, source, dest string
 	g.log.Info("Repository cloned successfully",
 		logger.String("source", source),
 		logger.String("dest", dest),
+		logger.Bool("mirror", mirror),
 	)
+
+	return nil
+}
+
+// ConfigureMirror configures a repository as a mirror of the source
+func (g *GitOperations) ConfigureMirror(ctx context.Context, repoPath, sourceURL string) error {
+	g.log.Info("Configuring repository as mirror",
+		logger.String("repo_path", repoPath),
+		logger.String("source_url", sourceURL),
+	)
+
+	repo, err := git.PlainOpen(repoPath)
+	if err != nil {
+		g.log.Error("Failed to open repository",
+			logger.Error(err),
+			logger.String("repo_path", repoPath),
+		)
+		return fmt.Errorf("failed to open repository: %w", err)
+	}
+
+	// Set remote configuration for mirroring
+	config, err := repo.Config()
+	if err != nil {
+		g.log.Error("Failed to get repository config",
+			logger.Error(err),
+			logger.String("repo_path", repoPath),
+		)
+		return fmt.Errorf("failed to get repository config: %w", err)
+	}
+
+	// Configure origin remote with mirror fetch
+	if config.Remotes == nil {
+		config.Remotes = make(map[string]*gitconfig.RemoteConfig)
+	}
+
+	config.Remotes["origin"] = &gitconfig.RemoteConfig{
+		Name:   "origin",
+		URLs:   []string{sourceURL},
+		Fetch:  []gitconfig.RefSpec{"+refs/*:refs/*"},
+		Mirror: true,
+	}
+
+	if err := repo.SetConfig(config); err != nil {
+		g.log.Error("Failed to set repository config",
+			logger.Error(err),
+			logger.String("repo_path", repoPath),
+		)
+		return fmt.Errorf("failed to set repository config: %w", err)
+	}
+
+	g.log.Info("Repository configured as mirror successfully",
+		logger.String("repo_path", repoPath),
+		logger.String("source_url", sourceURL),
+	)
+
+	return nil
+}
+
+// FetchMirror fetches updates from the mirror source repository
+func (g *GitOperations) FetchMirror(ctx context.Context, repoPath, sourceURL string) error {
+	g.log.Info("Fetching mirror updates",
+		logger.String("repo_path", repoPath),
+		logger.String("source_url", sourceURL),
+	)
+
+	repo, err := git.PlainOpen(repoPath)
+	if err != nil {
+		g.log.Error("Failed to open repository",
+			logger.Error(err),
+			logger.String("repo_path", repoPath),
+		)
+		return fmt.Errorf("failed to open repository: %w", err)
+	}
+
+	// Get the remote
+	remote, err := repo.Remote("origin")
+	if err != nil {
+		g.log.Error("Failed to get origin remote",
+			logger.Error(err),
+			logger.String("repo_path", repoPath),
+		)
+		return fmt.Errorf("failed to get origin remote: %w", err)
+	}
+
+	// Fetch with mirror option
+	err = remote.Fetch(&git.FetchOptions{
+		RemoteName: "origin",
+		RefSpecs:   []gitconfig.RefSpec{"+refs/*:refs/*"},
+		Force:      true,
+		Progress:   nil,
+	})
+
+	if err != nil && err != git.NoErrAlreadyUpToDate {
+		g.log.Error("Failed to fetch mirror updates",
+			logger.Error(err),
+			logger.String("repo_path", repoPath),
+			logger.String("source_url", sourceURL),
+		)
+		return fmt.Errorf("failed to fetch mirror updates: %w", err)
+	}
+
+	if err == git.NoErrAlreadyUpToDate {
+		g.log.Info("Mirror already up to date",
+			logger.String("repo_path", repoPath),
+		)
+	} else {
+		g.log.Info("Mirror fetched successfully",
+			logger.String("repo_path", repoPath),
+			logger.String("source_url", sourceURL),
+		)
+	}
+
+	return nil
+}
+
+// PushMirror pushes updates to a downstream mirror repository
+func (g *GitOperations) PushMirror(ctx context.Context, repoPath, destURL, username, password string) error {
+	g.log.Info("Pushing to downstream mirror",
+		logger.String("repo_path", repoPath),
+		logger.String("dest_url", destURL),
+	)
+
+	repo, err := git.PlainOpen(repoPath)
+	if err != nil {
+		g.log.Error("Failed to open repository",
+			logger.Error(err),
+			logger.String("repo_path", repoPath),
+		)
+		return fmt.Errorf("failed to open repository: %w", err)
+	}
+
+	// Create or get remote for downstream
+	remoteName := "downstream"
+	remote, err := repo.Remote(remoteName)
+	if err != nil {
+		// Remote doesn't exist, create it
+		g.log.Debug("Creating downstream remote",
+			logger.String("repo_path", repoPath),
+			logger.String("remote_name", remoteName),
+		)
+		remote, err = repo.CreateRemote(&gitconfig.RemoteConfig{
+			Name: remoteName,
+			URLs: []string{destURL},
+		})
+		if err != nil {
+			g.log.Error("Failed to create downstream remote",
+				logger.Error(err),
+				logger.String("repo_path", repoPath),
+			)
+			return fmt.Errorf("failed to create downstream remote: %w", err)
+		}
+	}
+
+	// Push with mirror option
+	pushOptions := &git.PushOptions{
+		RemoteName: remoteName,
+		RefSpecs:   []gitconfig.RefSpec{"+refs/*:refs/*"},
+		Force:      true,
+		Progress:   nil,
+	}
+
+	// Add authentication if provided
+	if username != "" || password != "" {
+		pushOptions.Auth = &githttp.BasicAuth{
+			Username: username,
+			Password: password,
+		}
+	}
+
+	err = remote.Push(pushOptions)
+	if err != nil && err != git.NoErrAlreadyUpToDate {
+		g.log.Error("Failed to push to downstream mirror",
+			logger.Error(err),
+			logger.String("repo_path", repoPath),
+			logger.String("dest_url", destURL),
+		)
+		return fmt.Errorf("failed to push to downstream mirror: %w", err)
+	}
+
+	if err == git.NoErrAlreadyUpToDate {
+		g.log.Info("Downstream mirror already up to date",
+			logger.String("repo_path", repoPath),
+		)
+	} else {
+		g.log.Info("Pushed to downstream mirror successfully",
+			logger.String("repo_path", repoPath),
+			logger.String("dest_url", destURL),
+		)
+	}
 
 	return nil
 }

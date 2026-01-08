@@ -6,9 +6,12 @@ import (
 	"math"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/robfig/cron/v3"
 
+	"github.com/bravo68web/stasis/internal/application/dto"
 	"github.com/bravo68web/stasis/internal/domain/models"
 	"github.com/bravo68web/stasis/internal/domain/repository"
 	"github.com/bravo68web/stasis/internal/domain/service"
@@ -147,12 +150,267 @@ func (s *RepoService) CreateRepository(ctx context.Context, ownerID uuid.UUID, n
 	return repo, nil
 }
 
-// GetRepository retrieves a repository by owner and name
+// ImportRepository imports a repository from an external Git source
+func (s *RepoService) ImportRepository(ctx context.Context, ownerID uuid.UUID, name, description, cloneURL, username, password string, isPrivate, mirror bool) (*models.Repository, error) {
+	s.log.Info("Importing repository",
+		logger.String("owner_id", ownerID.String()),
+		logger.String("name", name),
+		logger.String("clone_url", cloneURL),
+		logger.Bool("is_private", isPrivate),
+		logger.Bool("mirror", mirror),
+	)
+
+	// Validate repository name
+	if name == "" {
+		s.log.Warn("Repository import failed - name is required")
+		return nil, apperrors.BadRequest("repository name is required", apperrors.ErrInvalidInput)
+	}
+
+	if cloneURL == "" {
+		s.log.Warn("Repository import failed - clone URL is required")
+		return nil, apperrors.BadRequest("clone URL is required", apperrors.ErrInvalidInput)
+	}
+
+	// Get owner to verify they exist and get username
+	owner, err := s.userRepo.FindByID(ctx, ownerID)
+	if err != nil {
+		if apperrors.IsNotFound(err) {
+			s.log.Warn("Repository import failed - owner not found",
+				logger.String("owner_id", ownerID.String()),
+			)
+			return nil, apperrors.NotFound("user", apperrors.ErrNotFound)
+		}
+		s.log.Error("Failed to find owner",
+			logger.Error(err),
+			logger.String("owner_id", ownerID.String()),
+		)
+		return nil, fmt.Errorf("failed to find owner: %w", err)
+	}
+
+	// Check if repository already exists for this owner
+	exists, err := s.repoRepo.ExistsByOwnerAndName(ctx, ownerID, name)
+	if err != nil {
+		s.log.Error("Failed to check repository existence",
+			logger.Error(err),
+			logger.String("owner_id", ownerID.String()),
+			logger.String("name", name),
+		)
+		return nil, fmt.Errorf("failed to check repository existence: %w", err)
+	}
+	if exists {
+		s.log.Warn("Repository already exists",
+			logger.String("owner", owner.Username),
+			logger.String("name", name),
+		)
+		return nil, apperrors.Conflict("repository already exists", apperrors.ErrRepositoryExists)
+	}
+
+	// Build git path
+	gitPath := s.storage.GetRepoPath(owner.Username, name)
+
+	// Create repository record
+	repo := &models.Repository{
+		Name:        name,
+		OwnerID:     ownerID,
+		IsPrivate:   isPrivate,
+		Description: description,
+		GitPath:     gitPath,
+		SyncStatus:  "idle",
+	}
+
+	// Set mirror configuration if this is a mirror repository
+	if mirror {
+		repo.MirrorEnabled = true
+		repo.MirrorDirection = "upstream" // Import is always upstream
+		repo.UpstreamURL = cloneURL
+		repo.UpstreamUsername = username
+		repo.UpstreamPassword = password // TODO: Encrypt before storing
+		repo.SyncInterval = 3600         // Default 1 hour
+	}
+
+	// Clone repository from external source
+	s.log.Debug("Cloning repository from external source",
+		logger.String("git_path", gitPath),
+		logger.String("clone_url", cloneURL),
+		logger.Bool("mirror", mirror),
+	)
+
+	if err := s.gitService.CloneRepository(ctx, cloneURL, gitPath, username, password, mirror); err != nil {
+		s.log.Error("Failed to clone repository",
+			logger.Error(err),
+			logger.String("clone_url", cloneURL),
+			logger.String("git_path", gitPath),
+		)
+		return nil, fmt.Errorf("failed to clone repository: %w", err)
+	}
+
+	// If it's a mirror, we need to configure it as a bare mirror
+	if mirror {
+		if err := s.gitService.ConfigureMirror(ctx, gitPath, cloneURL); err != nil {
+			s.log.Error("Failed to configure mirror",
+				logger.Error(err),
+				logger.String("git_path", gitPath),
+			)
+			// Cleanup on failure
+			if cleanupErr := s.storage.DeleteDirectory(gitPath); cleanupErr != nil {
+				s.log.Error("Failed to cleanup repository after mirror configuration error",
+					logger.Error(cleanupErr),
+					logger.String("git_path", gitPath),
+				)
+			}
+			return nil, fmt.Errorf("failed to configure mirror: %w", err)
+		}
+	}
+
+	// Try to determine default branch from the cloned repository
+	branches, err := s.gitService.ListBranches(ctx, gitPath)
+	if err == nil && len(branches) > 0 {
+		// Find the HEAD branch or use the first branch
+		for _, branch := range branches {
+			if branch.IsHead {
+				repo.DefaultBranch = branch.Name
+				break
+			}
+		}
+		if repo.DefaultBranch == "" && len(branches) > 0 {
+			repo.DefaultBranch = branches[0].Name
+		}
+	}
+
+	// Set initial sync time for mirrors
+	if mirror {
+		now := time.Now()
+		repo.LastSyncedAt = &now
+		repo.SyncStatus = "success"
+	}
+
+	// Save to database
+	if err := s.repoRepo.Create(ctx, repo); err != nil {
+		s.log.Error("Failed to create repository in database",
+			logger.Error(err),
+			logger.String("name", name),
+		)
+		// Cleanup git repository if database save fails
+		if cleanupErr := s.storage.DeleteDirectory(gitPath); cleanupErr != nil {
+			s.log.Error("Failed to cleanup git repository after database error",
+				logger.Error(cleanupErr),
+				logger.String("git_path", gitPath),
+			)
+		}
+		return nil, fmt.Errorf("failed to create repository: %w", err)
+	}
+
+	// Set owner reference
+	repo.Owner = *owner
+
+	s.log.Info("Repository imported successfully",
+		logger.String("repo_id", repo.ID.String()),
+		logger.String("owner", owner.Username),
+		logger.String("name", name),
+		logger.String("git_path", gitPath),
+		logger.String("clone_url", cloneURL),
+		logger.Bool("mirror", mirror),
+	)
+
+	return repo, nil
+}
+
 func (s *RepoService) GetRepository(ctx context.Context, ownerUsername, repoName string) (*models.Repository, error) {
 	repo, err := s.repoRepo.FindByOwnerUsernameAndName(ctx, ownerUsername, repoName)
 	if err != nil {
 		return nil, err
 	}
+
+	return repo, nil
+}
+
+// UpdateMirrorSettings updates the mirror settings for a repository
+func (s *RepoService) UpdateMirrorSettings(ctx context.Context, repoID uuid.UUID, req *dto.UpdateMirrorSettingsRequest) (*models.Repository, error) {
+	s.log.Info("Updating mirror settings",
+		logger.String("repo_id", repoID.String()),
+	)
+
+	// Get repository
+	repo, err := s.repoRepo.FindByID(ctx, repoID)
+	if err != nil {
+		s.log.Error("Failed to find repository",
+			logger.Error(err),
+			logger.String("repo_id", repoID.String()),
+		)
+		return nil, err
+	}
+
+	// Update fields if provided
+	if req.MirrorEnabled != nil {
+		repo.MirrorEnabled = *req.MirrorEnabled
+	}
+
+	if req.MirrorDirection != nil {
+		// Validate direction
+		direction := *req.MirrorDirection
+		if direction != "" && direction != "upstream" && direction != "downstream" && direction != "both" {
+			return nil, apperrors.BadRequest("invalid mirror direction, must be 'upstream', 'downstream', or 'both'", apperrors.ErrInvalidInput)
+		}
+		repo.MirrorDirection = direction
+	}
+
+	if req.UpstreamURL != nil {
+		repo.UpstreamURL = *req.UpstreamURL
+	}
+
+	if req.UpstreamUsername != nil {
+		repo.UpstreamUsername = *req.UpstreamUsername
+	}
+
+	if req.UpstreamPassword != nil {
+		// TODO: Encrypt password before storing
+		repo.UpstreamPassword = *req.UpstreamPassword
+	}
+
+	if req.DownstreamURL != nil {
+		repo.DownstreamURL = *req.DownstreamURL
+	}
+
+	if req.DownstreamUsername != nil {
+		repo.DownstreamUsername = *req.DownstreamUsername
+	}
+
+	if req.DownstreamPassword != nil {
+		// TODO: Encrypt password before storing
+		repo.DownstreamPassword = *req.DownstreamPassword
+	}
+
+	if req.SyncSchedule != nil {
+		// Validate cron expression
+		parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+		_, err := parser.Parse(*req.SyncSchedule)
+		if err != nil {
+			return nil, apperrors.BadRequest(fmt.Sprintf("invalid cron expression: %v", err), apperrors.ErrInvalidInput)
+		}
+		repo.SyncSchedule = *req.SyncSchedule
+		// Clear interval if schedule is set
+		repo.SyncInterval = 0
+	} else if req.SyncInterval != nil {
+		if *req.SyncInterval < 60 {
+			return nil, apperrors.BadRequest("sync interval must be at least 60 seconds", apperrors.ErrInvalidInput)
+		}
+		repo.SyncInterval = *req.SyncInterval
+		// Clear schedule if interval is set
+		repo.SyncSchedule = ""
+	}
+
+	// Save updated repository
+	if err := s.repoRepo.Update(ctx, repo); err != nil {
+		s.log.Error("Failed to update repository",
+			logger.Error(err),
+			logger.String("repo_id", repoID.String()),
+		)
+		return nil, err
+	}
+
+	s.log.Info("Mirror settings updated successfully",
+		logger.String("repo_id", repoID.String()),
+	)
 
 	return repo, nil
 }
@@ -822,7 +1080,7 @@ func (s *RepoService) ForkRepository(ctx context.Context, sourceRepoID, newOwner
 		logger.String("source_path", sourceRepo.GitPath),
 		logger.String("new_path", newGitPath),
 	)
-	if err := s.gitService.CloneRepository(ctx, sourceRepo.GitPath, newGitPath, true); err != nil {
+	if err := s.gitService.CloneRepository(ctx, sourceRepo.GitPath, newGitPath, "", "", false); err != nil {
 		s.log.Error("Failed to clone repository for fork",
 			logger.Error(err),
 			logger.String("source_path", sourceRepo.GitPath),

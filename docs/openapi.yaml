@@ -523,6 +523,8 @@ paths:
                           type: string
                         description:
                           type: string
+                        downstream_url:
+                          type: string
                         git_path:
                           type: string
                         id:
@@ -530,8 +532,18 @@ paths:
                           format: uuid
                         is_private:
                           type: boolean
+                        last_synced_at:
+                          type: string
+                          format: date-time
+                        mirror_direction:
+                          type: string
+                        mirror_enabled:
+                          type: boolean
                         name:
                           type: string
+                        next_sync_at:
+                          type: string
+                          format: date-time
                         owner:
                           type: string
                         owner_id:
@@ -539,9 +551,17 @@ paths:
                           format: uuid
                         ssh_url:
                           type: string
+                        sync_interval:
+                          type: integer
+                        sync_schedule:
+                          type: string
+                        sync_status:
+                          type: string
                         updated_at:
                           type: string
                           format: date-time
+                        upstream_url:
+                          type: string
                   total:
                     type: integer
                   total_pages:
@@ -584,6 +604,8 @@ paths:
                     type: string
                   description:
                     type: string
+                  downstream_url:
+                    type: string
                   git_path:
                     type: string
                   id:
@@ -591,8 +613,18 @@ paths:
                     format: uuid
                   is_private:
                     type: boolean
+                  last_synced_at:
+                    type: string
+                    format: date-time
+                  mirror_direction:
+                    type: string
+                  mirror_enabled:
+                    type: boolean
                   name:
                     type: string
+                  next_sync_at:
+                    type: string
+                    format: date-time
                   owner:
                     type: string
                   owner_id:
@@ -600,9 +632,17 @@ paths:
                     format: uuid
                   ssh_url:
                     type: string
+                  sync_interval:
+                    type: integer
+                  sync_schedule:
+                    type: string
+                  sync_status:
+                    type: string
                   updated_at:
                     type: string
                     format: date-time
+                  upstream_url:
+                    type: string
         "400":
           description: Invalid request
         "401":
@@ -642,6 +682,8 @@ paths:
                     type: string
                   description:
                     type: string
+                  downstream_url:
+                    type: string
                   git_path:
                     type: string
                   id:
@@ -649,8 +691,18 @@ paths:
                     format: uuid
                   is_private:
                     type: boolean
+                  last_synced_at:
+                    type: string
+                    format: date-time
+                  mirror_direction:
+                    type: string
+                  mirror_enabled:
+                    type: boolean
                   name:
                     type: string
+                  next_sync_at:
+                    type: string
+                    format: date-time
                   owner:
                     type: string
                   owner_id:
@@ -658,9 +710,17 @@ paths:
                     format: uuid
                   ssh_url:
                     type: string
+                  sync_interval:
+                    type: integer
+                  sync_schedule:
+                    type: string
+                  sync_status:
+                    type: string
                   updated_at:
                     type: string
                     format: date-time
+                  upstream_url:
+                    type: string
         "404":
           description: Repository not found
     delete:
@@ -734,6 +794,8 @@ paths:
                     type: string
                   description:
                     type: string
+                  downstream_url:
+                    type: string
                   git_path:
                     type: string
                   id:
@@ -741,8 +803,18 @@ paths:
                     format: uuid
                   is_private:
                     type: boolean
+                  last_synced_at:
+                    type: string
+                    format: date-time
+                  mirror_direction:
+                    type: string
+                  mirror_enabled:
+                    type: boolean
                   name:
                     type: string
+                  next_sync_at:
+                    type: string
+                    format: date-time
                   owner:
                     type: string
                   owner_id:
@@ -750,9 +822,17 @@ paths:
                     format: uuid
                   ssh_url:
                     type: string
+                  sync_interval:
+                    type: integer
+                  sync_schedule:
+                    type: string
+                  sync_status:
+                    type: string
                   updated_at:
                     type: string
                     format: date-time
+                  upstream_url:
+                    type: string
         "401":
           description: Unauthorized
         "404":
@@ -1864,6 +1944,68 @@ paths:
           description: Unauthorized
         "404":
           description: Repository or commit not found
+  /api/v1/repos/{owner}/{repo}/mirror:
+    get:
+      summary: github.com/bravo68web/stasis/internal/transport/http/handler.(*RepoHandler).GetMirrorSettings-fm
+      operationId: handler_RepoHandler_GetMirrorSettings
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+    patch:
+      summary: github.com/bravo68web/stasis/internal/transport/http/handler.(*RepoHandler).UpdateMirrorSettings-fm
+      operationId: handler_RepoHandler_UpdateMirrorSettings
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+  /api/v1/repos/{owner}/{repo}/mirror/status:
+    get:
+      tags:
+        - Repositories
+      summary: Get mirror status
+      description: Get sync status of a mirror repository
+      operationId: handler_RepoHandler_GetMirrorStatus
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+        "400":
+          description: Not a mirror repository
+        "401":
+          description: Unauthorized
+        "404":
+          description: Repository not found
   /api/v1/repos/{owner}/{repo}/stats:
     get:
       tags:
@@ -1898,6 +2040,35 @@ paths:
                     type: integer
         "401":
           description: Unauthorized
+        "404":
+          description: Repository not found
+  /api/v1/repos/{owner}/{repo}/sync:
+    post:
+      tags:
+        - Repositories
+      summary: Sync mirror repository
+      description: Trigger a sync for a mirror repository
+      operationId: handler_RepoHandler_SyncMirror
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "202":
+          description: Sync started
+        "400":
+          description: Not a mirror repository
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
         "404":
           description: Repository not found
   /api/v1/repos/{owner}/{repo}/tags:
@@ -2152,6 +2323,94 @@ paths:
           description: Unauthorized
         "404":
           description: Repository or ref not found
+  /api/v1/repos/import:
+    post:
+      tags:
+        - Repositories
+      summary: Import repository
+      description: Import a repository from an external Git source
+      operationId: handler_RepoHandler_ImportRepository
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                clone_url:
+                  type: string
+                description:
+                  type: string
+                is_private:
+                  type: boolean
+                mirror:
+                  type: boolean
+                name:
+                  type: string
+                password:
+                  type: string
+                username:
+                  type: string
+        required: true
+      responses:
+        "201":
+          description: Repository imported successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  clone_url:
+                    type: string
+                  created_at:
+                    type: string
+                    format: date-time
+                  default_branch:
+                    type: string
+                  description:
+                    type: string
+                  downstream_url:
+                    type: string
+                  git_path:
+                    type: string
+                  id:
+                    type: string
+                    format: uuid
+                  is_private:
+                    type: boolean
+                  last_synced_at:
+                    type: string
+                    format: date-time
+                  mirror_direction:
+                    type: string
+                  mirror_enabled:
+                    type: boolean
+                  name:
+                    type: string
+                  next_sync_at:
+                    type: string
+                    format: date-time
+                  owner:
+                    type: string
+                  owner_id:
+                    type: string
+                    format: uuid
+                  ssh_url:
+                    type: string
+                  sync_interval:
+                    type: integer
+                  sync_schedule:
+                    type: string
+                  sync_status:
+                    type: string
+                  updated_at:
+                    type: string
+                    format: date-time
+                  upstream_url:
+                    type: string
+        "400":
+          description: Invalid request
+        "401":
+          description: Unauthorized
   /api/v1/repos/public:
     get:
       tags:
@@ -2185,6 +2444,8 @@ paths:
                           type: string
                         description:
                           type: string
+                        downstream_url:
+                          type: string
                         git_path:
                           type: string
                         id:
@@ -2192,8 +2453,18 @@ paths:
                           format: uuid
                         is_private:
                           type: boolean
+                        last_synced_at:
+                          type: string
+                          format: date-time
+                        mirror_direction:
+                          type: string
+                        mirror_enabled:
+                          type: boolean
                         name:
                           type: string
+                        next_sync_at:
+                          type: string
+                          format: date-time
                         owner:
                           type: string
                         owner_id:
@@ -2201,9 +2472,17 @@ paths:
                           format: uuid
                         ssh_url:
                           type: string
+                        sync_interval:
+                          type: integer
+                        sync_schedule:
+                          type: string
+                        sync_status:
+                          type: string
                         updated_at:
                           type: string
                           format: date-time
+                        upstream_url:
+                          type: string
                   total:
                     type: integer
                   total_pages:

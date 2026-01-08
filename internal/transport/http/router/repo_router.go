@@ -16,6 +16,7 @@ func (r *Router) repoRouter() {
 	// Initialize handler
 	h := handler.NewRepoHandler(
 		r.Deps.RepoService,
+		r.Deps.MirrorSyncService,
 		r.server.Config.Server.Host,
 		r.server.Config.SSH.Host,
 		r.server.Config.SSH.Port,
@@ -42,6 +43,25 @@ func (r *Router) repoRouter() {
 		Responses: map[int]openapi.ResponseDoc{
 			201: {
 				Description: "Repository created successfully",
+				Model:       dto.RepoResponse{},
+			},
+			400: {
+				Description: "Invalid request",
+			},
+			401: {
+				Description: "Unauthorized",
+			},
+		},
+	})
+
+	r.server.OpenAPIGenerator.RegisterDocs("POST", "/api/v1/repos/import", openapi.RouteDocs{
+		Summary:     "Import repository",
+		Description: "Import a repository from an external Git source",
+		Tags:        []string{"Repositories"},
+		RequestBody: dto.ImportRepoRequest{},
+		Responses: map[int]openapi.ResponseDoc{
+			201: {
+				Description: "Repository imported successfully",
 				Model:       dto.RepoResponse{},
 			},
 			400: {
@@ -394,6 +414,49 @@ func (r *Router) repoRouter() {
 		},
 	})
 
+	r.server.OpenAPIGenerator.RegisterDocs("POST", "/api/v1/repos/:owner/:repo/sync", openapi.RouteDocs{
+		Summary:     "Sync mirror repository",
+		Description: "Trigger a sync for a mirror repository",
+		Tags:        []string{"Repositories"},
+		Responses: map[int]openapi.ResponseDoc{
+			202: {
+				Description: "Sync started",
+			},
+			400: {
+				Description: "Not a mirror repository",
+			},
+			401: {
+				Description: "Unauthorized",
+			},
+			403: {
+				Description: "Forbidden",
+			},
+			404: {
+				Description: "Repository not found",
+			},
+		},
+	})
+
+	r.server.OpenAPIGenerator.RegisterDocs("GET", "/api/v1/repos/:owner/:repo/mirror/status", openapi.RouteDocs{
+		Summary:     "Get mirror status",
+		Description: "Get sync status of a mirror repository",
+		Tags:        []string{"Repositories"},
+		Responses: map[int]openapi.ResponseDoc{
+			200: {
+				Description: "Successful response",
+			},
+			400: {
+				Description: "Not a mirror repository",
+			},
+			401: {
+				Description: "Unauthorized",
+			},
+			404: {
+				Description: "Repository not found",
+			},
+		},
+	})
+
 	// Repository routes
 	repos := v1.Group("/repos")
 	{
@@ -402,6 +465,7 @@ func (r *Router) repoRouter() {
 
 		// Protected repository routes
 		repos.POST("", authMiddleware.RequireAuth(), h.CreateRepository)
+		repos.POST("/import", authMiddleware.RequireAuth(), h.ImportRepository)
 		repos.GET("", authMiddleware.RequireAuth(), h.ListRepositories)
 
 		// Repository-specific routes
@@ -437,6 +501,14 @@ func (r *Router) repoRouter() {
 
 			// Blame routes
 			repoRoutes.GET("/blame/:ref/*path", authMiddleware.Authenticate(), h.GetBlame)
+
+			// Mirror sync routes
+			repoRoutes.POST("/sync", authMiddleware.RequireAuth(), h.SyncMirror)
+			repoRoutes.GET("/mirror/status", authMiddleware.Authenticate(), h.GetMirrorStatus)
+
+			// Mirror settings routes
+			repoRoutes.GET("/mirror", authMiddleware.Authenticate(), h.GetMirrorSettings)
+			repoRoutes.PATCH("/mirror", authMiddleware.RequireAuth(), h.UpdateMirrorSettings)
 		}
 	}
 }
