@@ -65,6 +65,7 @@ func (f *Factory) Create() (service.StorageService, error) {
 			logger.String("bucket", f.config.S3Bucket),
 			logger.String("region", f.config.S3Region),
 			logger.String("endpoint", f.config.S3Endpoint),
+			logger.String("local_cache", f.config.BasePath),
 		)
 		storage, err := NewS3Storage(
 			context.Background(),
@@ -75,6 +76,7 @@ func (f *Factory) Create() (service.StorageService, error) {
 				SecretKey:    f.config.S3SecretKey,
 				Endpoint:     f.config.S3Endpoint,
 				UsePathStyle: f.config.S3UsePathStyle || f.config.S3Endpoint != "",
+				LocalCache:   f.config.BasePath, // Local path for git operations
 			},
 		)
 		if err != nil {

@@ -322,6 +322,15 @@ func (s *Server) handleGitCommand(sess ssh.Session, gitCmd, repoPath string) err
 		if err != nil {
 			return err
 		}
+		// Sync to remote storage (S3) after successful push
+		if err := s.storage.SyncToRemote(repo.GitPath); err != nil {
+			s.log.Error("Failed to sync repository to remote storage",
+				logger.Error(err),
+				logger.String("repo", repo.Name),
+				logger.String("path", repo.GitPath),
+			)
+			// Don't fail the push, just log the error
+		}
 		// Set default branch if not already set (first push)
 		s.repoService.SetDefaultBranchOnPush(ctx, repo)
 		// Trigger CI after successful push

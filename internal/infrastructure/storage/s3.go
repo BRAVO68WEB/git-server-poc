@@ -83,10 +83,21 @@ func NewS3Storage(ctx context.Context, cfg S3Config) (*S3Storage, error) {
 		prefix += "/"
 	}
 
-	// Set up local cache directory
+	// Set up local cache directory for git operations
 	localCache := cfg.LocalCache
 	if localCache == "" {
 		localCache = os.TempDir()
+	}
+	// Convert to absolute path for consistent git_path storage
+	absLocalCache, err := filepath.Abs(localCache)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get absolute path for local cache: %w", err)
+	}
+	localCache = absLocalCache
+
+	// Ensure local cache directory exists
+	if err := os.MkdirAll(localCache, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create local cache directory: %w", err)
 	}
 
 	storage := &S3Storage{
@@ -112,14 +123,15 @@ func (s *S3Storage) verifyBucket(ctx context.Context) error {
 	return err
 }
 
-// GetRepoPath returns the S3 key path for a repository
+// GetRepoPath returns the LOCAL filesystem path for a repository
+// Git operations require a local path; S3 is used for blob storage, not git repos directly
 func (s *S3Storage) GetRepoPath(owner, repoName string) string {
-	return fmt.Sprintf("%s%s/%s.git", s.prefix, owner, repoName)
+	return filepath.Join(s.localCache, owner, repoName+".git")
 }
 
-// GetBasePath returns the base prefix
+// GetBasePath returns the local cache path for git operations
 func (s *S3Storage) GetBasePath() string {
-	return s.prefix
+	return s.localCache
 }
 
 // fullKey returns the full S3 key for a path
@@ -696,6 +708,64 @@ func (s *S3Storage) GetDiskUsage(path string) (int64, error) {
 	}
 
 	return totalSize, nil
+}
+
+// SyncToRemote syncs a local directory to S3
+// This implements write-through for git operations
+func (s *S3Storage) SyncToRemote(localPath string) error {
+	ctx := context.Background()
+
+	// Calculate the relative path from localCache to get the S3 key prefix
+	relPath, err := filepath.Rel(s.localCache, localPath)
+	if err != nil {
+		return fmt.Errorf("failed to get relative path: %w", err)
+	}
+
+	// Walk the local directory and upload all files
+	err = filepath.Walk(localPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip directories (S3 doesn't have real directories)
+		if info.IsDir() {
+			return nil
+		}
+
+		// Calculate the S3 key
+		fileRelPath, err := filepath.Rel(localPath, path)
+		if err != nil {
+			return fmt.Errorf("failed to get relative file path: %w", err)
+		}
+
+		s3Key := s.prefix + relPath + "/" + fileRelPath
+		// Normalize path separators for S3
+		s3Key = strings.ReplaceAll(s3Key, string(filepath.Separator), "/")
+
+		// Read the local file
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("failed to read local file %s: %w", path, err)
+		}
+
+		// Upload to S3
+		_, err = s.client.PutObject(ctx, &s3.PutObjectInput{
+			Bucket: aws.String(s.bucket),
+			Key:    aws.String(s3Key),
+			Body:   bytes.NewReader(data),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to upload %s to S3: %w", s3Key, err)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to sync to S3: %w", err)
+	}
+
+	return nil
 }
 
 // Verify interface compliance at compile time
